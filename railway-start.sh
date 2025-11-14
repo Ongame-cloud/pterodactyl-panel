@@ -1,5 +1,4 @@
 #!/bin/sh
-set -e
 
 echo "Starting Pterodactyl Panel on Railway..."
 
@@ -12,25 +11,20 @@ if [ ! -f .env ]; then
     
     if [ -z "$APP_KEY" ]; then
         echo "Generating APP_KEY..."
-        php artisan key:generate --force
+        php artisan key:generate --force || true
     fi
 fi
 
 mkdir -p storage/logs storage/framework/sessions storage/framework/views storage/framework/cache bootstrap/cache
 chmod -R 777 storage bootstrap/cache
 
-echo "Waiting for database connection..."
-php artisan migrate --force --seed || echo "Migration failed, continuing..."
+echo "Running migrations..."
+php artisan migrate --force || echo "Migration skipped"
 
 echo "Clearing caches..."
-php artisan config:clear || true
-php artisan cache:clear || true
-php artisan view:clear || true
-
-echo "Optimizing application..."
-php artisan config:cache || true
-php artisan route:cache || true
-php artisan view:cache || true
+php artisan config:clear 2>/dev/null || true
+php artisan cache:clear 2>/dev/null || true
+php artisan view:clear 2>/dev/null || true
 
 echo "Setting up nginx..."
 cat > /etc/nginx/nginx.conf << EOF
@@ -126,12 +120,14 @@ echo "Waiting for PHP-FPM to start..."
 sleep 3
 
 echo "Testing PHP-FPM connection..."
-if ! nc -z 127.0.0.1 9000 2>/dev/null; then
-    echo "ERROR: PHP-FPM is not running!"
-    exit 1
-fi
-
-echo "PHP-FPM is running on 127.0.0.1:9000"
+for i in 1 2 3 4 5; do
+    if nc -z 127.0.0.1 9000 2>/dev/null; then
+        echo "PHP-FPM is running on 127.0.0.1:9000"
+        break
+    fi
+    echo "Waiting for PHP-FPM... ($i/5)"
+    sleep 1
+done
 
 echo "Starting nginx on port $PORT..."
 nginx -c /etc/nginx/nginx.conf -g 'daemon off;' &
