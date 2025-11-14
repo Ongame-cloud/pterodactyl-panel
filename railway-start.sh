@@ -33,7 +33,7 @@ php artisan route:cache || true
 php artisan view:cache || true
 
 echo "Setting up nginx..."
-cat > /etc/nginx/nginx.conf << 'EOF'
+cat > /etc/nginx/nginx.conf << EOF
 user nobody;
 worker_processes auto;
 pid /tmp/nginx.pid;
