@@ -3,6 +3,9 @@ set -e
 
 echo "Starting Pterodactyl Panel on Railway..."
 
+PORT=${PORT:-8080}
+echo "Using port: $PORT"
+
 if [ ! -f .env ]; then
     echo "Creating .env file..."
     cp .env.example .env
@@ -14,20 +17,20 @@ if [ ! -f .env ]; then
 fi
 
 mkdir -p storage/logs storage/framework/sessions storage/framework/views storage/framework/cache bootstrap/cache
-chmod -R 755 storage bootstrap/cache
+chmod -R 777 storage bootstrap/cache
 
 echo "Waiting for database connection..."
-php artisan migrate --force --seed
+php artisan migrate --force --seed || echo "Migration failed, continuing..."
 
 echo "Clearing caches..."
-php artisan config:clear
-php artisan cache:clear
-php artisan view:clear
+php artisan config:clear || true
+php artisan cache:clear || true
+php artisan view:clear || true
 
 echo "Optimizing application..."
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
+php artisan config:cache || true
+php artisan route:cache || true
+php artisan view:cache || true
 
 echo "Setting up nginx..."
 cat > /etc/nginx/nginx.conf << 'EOF'
@@ -71,7 +74,7 @@ http {
         
         location ~ \.php$ {
             fastcgi_split_path_info ^(.+\.php)(/.+)$;
-            fastcgi_pass unix:/tmp/php-fpm.sock;
+            fastcgi_pass 127.0.0.1:9000;
             fastcgi_index index.php;
             include fastcgi_params;
             fastcgi_param PHP_VALUE "upload_max_filesize = 100M \n post_max_size=100M";
@@ -97,14 +100,12 @@ cat > /tmp/php-fpm.conf << 'EOF'
 [global]
 pid = /tmp/php-fpm.pid
 error_log = /dev/stderr
+daemonize = no
 
 [www]
 user = nobody
 group = nobody
-listen = /tmp/php-fpm.sock
-listen.owner = nobody
-listen.group = nobody
-listen.mode = 0660
+listen = 127.0.0.1:9000
 pm = dynamic
 pm.max_children = 50
 pm.start_servers = 5
@@ -113,10 +114,29 @@ pm.max_spare_servers = 35
 pm.max_requests = 500
 clear_env = no
 catch_workers_output = yes
+php_admin_value[error_log] = /dev/stderr
+php_admin_flag[log_errors] = on
 EOF
 
 echo "Starting PHP-FPM..."
 php-fpm -F -y /tmp/php-fpm.conf &
+PHP_FPM_PID=$!
 
-echo "Starting nginx..."
-nginx -c /etc/nginx/nginx.conf -g 'daemon off;'
+echo "Waiting for PHP-FPM to start..."
+sleep 3
+
+echo "Testing PHP-FPM connection..."
+if ! nc -z 127.0.0.1 9000 2>/dev/null; then
+    echo "ERROR: PHP-FPM is not running!"
+    exit 1
+fi
+
+echo "PHP-FPM is running on 127.0.0.1:9000"
+
+echo "Starting nginx on port $PORT..."
+nginx -c /etc/nginx/nginx.conf -g 'daemon off;' &
+NGINX_PID=$!
+
+echo "Services started. PHP-FPM PID: $PHP_FPM_PID, Nginx PID: $NGINX_PID"
+
+wait $NGINX_PID
