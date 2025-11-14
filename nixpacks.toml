@@ -1,0 +1,19 @@
+[phases.setup]
+nixPkgs = ["php83", "php83Extensions.bcmath", "php83Extensions.gd", "php83Extensions.pdo", "php83Extensions.pdo_mysql", "php83Extensions.zip", "php83Extensions.mbstring", "php83Extensions.posix", "nodejs-18_x", "yarn", "nginx"]
+
+[phases.install]
+cmds = [
+    "composer install --no-dev --optimize-autoloader --no-interaction",
+    "yarn install --frozen-lockfile"
+]
+
+[phases.build]
+cmds = [
+    "yarn run build:production",
+    "php artisan config:cache",
+    "php artisan route:cache",
+    "php artisan view:cache"
+]
+
+[start]
+cmd = "bash railway-start.sh"
