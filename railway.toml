@@ -3,7 +3,7 @@ builder = "nixpacks"
 buildCommand = "composer install --no-dev --optimize-autoloader && yarn install --frozen-lockfile && yarn run build:production"
 
 [deploy]
-startCommand = "bash railway-start.sh"
+startCommand = "sh railway-start.sh"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 10
 
