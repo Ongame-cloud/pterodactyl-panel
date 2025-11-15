@@ -121,8 +121,20 @@ class WebSocketService
     private function sendFrame($connection, array $data): void
     {
         $json = json_encode($data);
-        $frame = new Frame($json, true, Frame::OP_TEXT);
-        $connection->write($frame->getContents());
+        $length = strlen($json);
+        
+        $frame = chr(0x81);
+        
+        if ($length <= 125) {
+            $frame .= chr($length);
+        } elseif ($length <= 65535) {
+            $frame .= chr(126) . pack('n', $length);
+        } else {
+            $frame .= chr(127) . pack('J', $length);
+        }
+        
+        $frame .= $json;
+        $connection->write($frame);
     }
 
     private function handleData($connection, string $connectionId, string $data, string $ipAddress): void
