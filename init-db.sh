@@ -2,7 +2,10 @@
 
 echo "Initializing database schema..."
 
-mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USERNAME" -p"$DB_PASSWORD" "$DB_DATABASE" <<'EOSQL'
+php -r "
+\$pdo = new PDO('mysql:host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_DATABASE'), getenv('DB_USERNAME'), getenv('DB_PASSWORD'));
+\$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+\$sql = <<<'EOSQL'
 SET FOREIGN_KEY_CHECKS=0;
 
 DROP TABLE IF EXISTS `migrations`;
@@ -379,6 +382,15 @@ INSERT INTO `migrations` (`migration`, `batch`) VALUES
 ('2020_04_03_230614_create_backups_table', 1);
 
 SET FOREIGN_KEY_CHECKS=1;
-EOSQL
+EOSQL;
+
+\$statements = array_filter(array_map('trim', explode(';', \$sql)));
+foreach (\$statements as \$statement) {
+    if (!empty(\$statement)) {
+        \$pdo->exec(\$statement . ';');
+    }
+}
+echo 'Database schema initialized successfully' . PHP_EOL;
+"
 
 echo "Database schema initialized successfully"
