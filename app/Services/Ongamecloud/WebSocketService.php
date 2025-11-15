@@ -123,7 +123,7 @@ class WebSocketService
     {
         preg_match('/Sec-WebSocket-Key: (.*)\r\n/', $data, $matches);
         if (empty($matches[1])) {
-            fclose($client);
+            Log::error("OngameCloud WebSocket: Invalid handshake", ["connection_id" => $connectionId, "data_length" => strlen($data)]);
             return;
         }
         
