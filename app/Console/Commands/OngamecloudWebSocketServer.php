@@ -4,8 +4,6 @@ namespace Pterodactyl\Console\Commands;
 
 use Illuminate\Console\Command;
 use Pterodactyl\Services\Ongamecloud\WebSocketService;
-use Workerman\Worker;
-use Workerman\Connection\TcpConnection;
 
 class OngamecloudWebSocketServer extends Command
 {
@@ -20,48 +18,55 @@ class OngamecloudWebSocketServer extends Command
         $host = config('app.websocket_host', '0.0.0.0');
         $port = config('app.websocket_port', 8090);
 
-        if (!config('ongamecloud.websocket.enabled')) {
-            $this->error('WebSocket server is disabled in configuration');
-            return 1;
-        }
-
         if (empty(config('ongamecloud.websocket.auth_token'))) {
             $this->error('No authentication token configured. Set ONGAMECLOUD_WS_AUTH_TOKEN in .env');
             return 1;
         }
 
         $this->info("Starting Ongamecloud WebSocket server on {$host}:{$port}");
-        
-        global $argv;
-        $argv[1] = 'start';
-        $argv[2] = '-d';
 
-        $worker = new Worker("websocket://{$host}:{$port}");
-        $worker->count = 1;
-        $worker->name = 'ongamecloud-websocket';
+        $address = "tcp://{$host}:{$port}";
+        $socket = stream_socket_server($address, $errno, $errstr);
+
+        if (!$socket) {
+            $this->error("Failed to create socket: {$errstr} ({$errno})");
+            return 1;
+        }
+
+        $this->info('WebSocket server started successfully');
         
-        $worker->onWorkerStart = function() {
-            echo "Ongamecloud WebSocket server started successfully\n";
-        };
+        $clients = [];
         
-        $worker->onConnect = function(TcpConnection $connection) use ($service) {
-            $service->onConnect($connection);
-        };
-        
-        $worker->onMessage = function(TcpConnection $connection, $data) use ($service) {
-            $service->onMessage($connection, $data);
-        };
-        
-        $worker->onClose = function(TcpConnection $connection) use ($service) {
-            $service->onClose($connection);
-        };
-        
-        $worker->onError = function(TcpConnection $connection, $code, $msg) {
-            echo "Error: $msg\n";
-        };
-        
-        Worker::runAll();
-        
+        while (true) {
+            $read = array_merge([$socket], $clients);
+            $write = null;
+            $except = null;
+            
+            if (stream_select($read, $write, $except, 0, 200000) < 1) {
+                continue;
+            }
+            
+            if (in_array($socket, $read)) {
+                $client = stream_socket_accept($socket, -1);
+                if ($client) {
+                    $clients[] = $client;
+                    $service->onConnect($client);
+                }
+                unset($read[array_search($socket, $read)]);
+            }
+            
+            foreach ($read as $client) {
+                $data = fread($client, 8192);
+                if ($data === false || $data === '') {
+                    $service->onClose($client);
+                    unset($clients[array_search($client, $clients)]);
+                    fclose($client);
+                } else {
+                    $service->onMessage($client, $data);
+                }
+            }
+        }
+
         return 0;
     }
 }
