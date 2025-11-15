@@ -204,7 +204,6 @@ class WebSocketService
         
         $this->send($client, [
             'type' => 'connected',
-            'message' => 'Connected to Ongamecloud WebSocket server',
             'connection_id' => $connectionId,
             'timestamp' => now()->toIso8601String(),
         ]);
@@ -311,7 +310,6 @@ class WebSocketService
         $this->send($client, [
             'type' => 'auth_response',
             'success' => true,
-            'message' => 'Authentication successful',
             'timestamp' => now()->toIso8601String(),
         ]);
         
@@ -366,7 +364,6 @@ class WebSocketService
                 'success' => true,
                 'action' => $action,
                 'server_short_id' => $serverShortId,
-                'message' => "Action '{$action}' executed successfully",
                 'timestamp' => now()->toIso8601String(),
             ];
         } catch (Exception $e) {
@@ -402,11 +399,19 @@ class WebSocketService
             $elapsed = time() - $pending['started_at'];
             
             if ($elapsed > 60) {
+                Log::warning("OngameCloud WebSocket: Confirmation timeout", [
+                    'connection_id' => $connectionId,
+                    'action' => $pending['action'],
+                ]);
                 unset($this->pendingConfirmations[$connectionId]);
                 continue;
             }
             
             if ($pending['checks'] >= 30) {
+                Log::warning("OngameCloud WebSocket: Max checks reached", [
+                    'connection_id' => $connectionId,
+                    'action' => $pending['action'],
+                ]);
                 unset($this->pendingConfirmations[$connectionId]);
                 continue;
             }
@@ -416,13 +421,18 @@ class WebSocketService
             try {
                 $status = $this->serverRepository->setServer($pending['server'])->getDetails();
                 
+                Log::debug("OngameCloud WebSocket: Status check", [
+                    'connection_id' => $connectionId,
+                    'current_state' => $status['current_state'] ?? 'unknown',
+                    'check_number' => $pending['checks'],
+                ]);
+                
                 if (isset($status['current_state']) && $status['current_state'] === 'running') {
                     $this->send($pending['client'], [
                         'type' => 'action_confirmed',
                         'action' => $pending['action'],
                         'server_short_id' => $pending['server']->uuidShort,
                         'status' => 'running',
-                        'message' => 'Server is now running',
                         'timestamp' => now()->toIso8601String(),
                     ]);
                     
@@ -430,14 +440,16 @@ class WebSocketService
                         'connection_id' => $connectionId,
                         'action' => $pending['action'],
                         'server' => $pending['server']->uuidShort,
+                        'checks_needed' => $pending['checks'],
                     ]);
                     
                     unset($this->pendingConfirmations[$connectionId]);
                 }
             } catch (Exception $e) {
-                Log::debug("OngameCloud WebSocket: Status check failed", [
+                Log::error("OngameCloud WebSocket: Status check failed", [
                     'connection_id' => $connectionId,
                     'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
                 ]);
             }
         }
