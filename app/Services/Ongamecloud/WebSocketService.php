@@ -53,21 +53,28 @@ class WebSocketService
             [$decoded, $frameSize] = $result;
             $data = substr($data, $frameSize);
             
-            Log::debug("OngameCloud WebSocket: Frame decoded", [
+            Log::info("OngameCloud WebSocket: Frame decoded", [
                 'connection_id' => $connectionId,
                 'decoded' => $decoded,
+                'decoded_hex' => bin2hex($decoded),
                 'frame_size' => $frameSize,
                 'remaining' => strlen($data)
             ]);
             
+            if (empty($decoded)) {
+                Log::warning("OngameCloud WebSocket: Empty payload", ['connection_id' => $connectionId]);
+                return;
+            }
+            
             $message = json_decode($decoded, true);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                Log::error("OngameCloud WebSocket: JSON decode error", [
+            if (!is_array($message)) {
+                Log::error("OngameCloud WebSocket: Invalid JSON", [
                     'connection_id' => $connectionId,
                     'decoded' => $decoded,
+                    'decoded_hex' => bin2hex($decoded),
                     'json_error' => json_last_error_msg()
                 ]);
-                throw new Exception('Invalid JSON format: ' . json_last_error_msg());
+                throw new Exception('Invalid JSON format');
             }
             
             if (!isset($message['type'])) {
