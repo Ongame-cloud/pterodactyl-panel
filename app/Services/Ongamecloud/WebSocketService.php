@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use React\Http\Message\Response;
 use React\Promise\Promise;
+use React\Stream\ThroughStream;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Ratchet\RFC6455\Messaging\Frame;
@@ -36,15 +37,9 @@ class WebSocketService
 
     public function handleUpgrade(ServerRequestInterface $request, ResponseInterface $psrResponse): Response
     {
-        return new Response(
-            101,
-            array_merge($psrResponse->getHeaders(), [
-                'X-Powered-By' => 'Ongamecloud WebSocket Server',
-            ]),
-            '',
-            '1.1',
-            'Switching Protocols',
-            function ($connection) use ($request) {
+        $stream = new ThroughStream();
+        
+        $stream->on('pipe', function ($connection) use ($request, $stream) {
                 $connectionId = spl_object_hash($connection);
                 $ipAddress = $request->getServerParams()['REMOTE_ADDR'] ?? 'unknown';
                 
@@ -107,7 +102,14 @@ class WebSocketService
                         'error' => $e->getMessage(),
                     ]);
                 });
-            }
+        });
+        
+        return new Response(
+            101,
+            array_merge($psrResponse->getHeaders(), [
+                'X-Powered-By' => 'Ongamecloud WebSocket Server',
+            ]),
+            $stream
         );
     }
 

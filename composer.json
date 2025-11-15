@@ -44,6 +44,7 @@
         "psr/cache": "~3.0.0",
         "react/socket": "^1.15",
         "react/http": "^1.10",
+        "react/stream": "^1.4",
         "ratchet/rfc6455": "^0.3",
         "textalk/websocket": "^1.6",
         "s1lentium/iptools": "~1.2.0",
