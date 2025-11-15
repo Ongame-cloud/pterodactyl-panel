@@ -106,6 +106,15 @@ class WebSocketService
                         return;
                     }
                     
+                    if (isset($this->pendingConfirmations[$connectionId])) {
+                        $this->send($client, [
+                            'type' => 'error',
+                            'error' => 'Action already in progress',
+                            'timestamp' => now()->toIso8601String(),
+                        ]);
+                        return;
+                    }
+                    
                     $response = $this->handleAction($client, $connectionId, $message);
                     $this->send($client, [
                         'type' => 'action_response',
@@ -356,7 +365,7 @@ class WebSocketService
                 'server' => $serverShortId,
             ]);
             
-            if (in_array($action, ['start', 'restart'])) {
+            if (in_array($action, ['start', 'restart', 'stop'])) {
                 $this->scheduleStatusCheck($client, $connectionId, $server, $action);
             }
             
@@ -423,16 +432,18 @@ class WebSocketService
                 
                 Log::debug("OngameCloud WebSocket: Status check", [
                     'connection_id' => $connectionId,
-                    'current_state' => $status['current_state'] ?? 'unknown',
+                    'state' => $status['state'] ?? 'unknown',
                     'check_number' => $pending['checks'],
                 ]);
                 
-                if (isset($status['current_state']) && $status['current_state'] === 'running') {
+                $expectedState = in_array($pending['action'], ['start', 'restart']) ? 'running' : 'offline';
+                
+                if (isset($status['state']) && $status['state'] === $expectedState) {
                     $this->send($pending['client'], [
                         'type' => 'action_confirmed',
                         'action' => $pending['action'],
                         'server_short_id' => $pending['server']->uuidShort,
-                        'status' => 'running',
+                        'status' => $status['state'],
                         'timestamp' => now()->toIso8601String(),
                     ]);
                     
@@ -441,6 +452,7 @@ class WebSocketService
                         'action' => $pending['action'],
                         'server' => $pending['server']->uuidShort,
                         'checks_needed' => $pending['checks'],
+                        'final_state' => $status['state'],
                     ]);
                     
                     unset($this->pendingConfirmations[$connectionId]);
