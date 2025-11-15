@@ -15,6 +15,7 @@ class WebSocketService
     private array $authenticated = [];
     private array $handshakes = [];
     private array $pendingConfirmations = [];
+    private array $followedServers = [];
 
     public function __construct(
         private DaemonPowerRepository $powerRepository,
@@ -129,6 +130,40 @@ class WebSocketService
                     ]);
                     break;
                     
+                case 'follow':
+                    if (!isset($this->authenticated[$connectionId])) {
+                        $this->send($client, [
+                            'type' => 'error',
+                            'error' => 'Not authenticated',
+                            'timestamp' => now()->toIso8601String(),
+                        ]);
+                        return;
+                    }
+                    
+                    $response = $this->handleFollow($client, $connectionId, $message);
+                    $this->send($client, [
+                        'type' => 'follow_response',
+                        ...$response,
+                    ]);
+                    break;
+                    
+                case 'unfollow':
+                    if (!isset($this->authenticated[$connectionId])) {
+                        $this->send($client, [
+                            'type' => 'error',
+                            'error' => 'Not authenticated',
+                            'timestamp' => now()->toIso8601String(),
+                        ]);
+                        return;
+                    }
+                    
+                    $response = $this->handleUnfollow($connectionId, $message);
+                    $this->send($client, [
+                        'type' => 'unfollow_response',
+                        ...$response,
+                    ]);
+                    break;
+                    
                 default:
                     throw new Exception('Unknown message type: ' . $message['type']);
             }
@@ -154,6 +189,7 @@ class WebSocketService
         unset($this->authenticated[$connectionId]);
         unset($this->handshakes[$connectionId]);
         unset($this->pendingConfirmations[$connectionId]);
+        unset($this->followedServers[$connectionId]);
         
         Log::info("OngameCloud WebSocket: Connection closed", ['connection_id' => $connectionId]);
     }
@@ -462,6 +498,108 @@ class WebSocketService
                     'connection_id' => $connectionId,
                     'error' => $e->getMessage(),
                     'trace' => $e->getTraceAsString(),
+                ]);
+            }
+        }
+    }
+
+    private function handleFollow($client, int $connectionId, array $data): array
+    {
+        if (!isset($data['server_short_id'])) {
+            return [
+                'success' => false,
+                'error' => 'server_short_id is required',
+                'timestamp' => now()->toIso8601String(),
+            ];
+        }
+        
+        $serverShortId = $data['server_short_id'];
+        $server = Server::where('uuidShort', $serverShortId)->first();
+        
+        if (!$server) {
+            return [
+                'success' => false,
+                'error' => 'Server not found',
+                'timestamp' => now()->toIso8601String(),
+            ];
+        }
+        
+        $this->followedServers[$connectionId] = [
+            'client' => $client,
+            'server' => $server,
+            'last_update' => 0,
+        ];
+        
+        Log::info("OngameCloud WebSocket: Following server", [
+            'connection_id' => $connectionId,
+            'server' => $serverShortId,
+        ]);
+        
+        return [
+            'success' => true,
+            'server_short_id' => $serverShortId,
+            'timestamp' => now()->toIso8601String(),
+        ];
+    }
+
+    private function handleUnfollow(int $connectionId, array $data): array
+    {
+        if (!isset($this->followedServers[$connectionId])) {
+            return [
+                'success' => false,
+                'error' => 'Not following any server',
+                'timestamp' => now()->toIso8601String(),
+            ];
+        }
+        
+        $serverShortId = $this->followedServers[$connectionId]['server']->uuidShort;
+        unset($this->followedServers[$connectionId]);
+        
+        Log::info("OngameCloud WebSocket: Unfollowed server", [
+            'connection_id' => $connectionId,
+            'server' => $serverShortId,
+        ]);
+        
+        return [
+            'success' => true,
+            'server_short_id' => $serverShortId,
+            'timestamp' => now()->toIso8601String(),
+        ];
+    }
+
+    public function updateFollowedServers(): void
+    {
+        $now = time();
+        
+        foreach ($this->followedServers as $connectionId => $follow) {
+            if ($now - $follow['last_update'] < 1) {
+                continue;
+            }
+            
+            $this->followedServers[$connectionId]['last_update'] = $now;
+            
+            try {
+                $status = $this->serverRepository->setServer($follow['server'])->getDetails();
+                
+                $this->send($follow['client'], [
+                    'type' => 'resources',
+                    'server_short_id' => $follow['server']->uuidShort,
+                    'state' => $status['state'] ?? 'offline',
+                    'resources' => [
+                        'memory_bytes' => $status['utilization']['memory_bytes'] ?? 0,
+                        'memory_limit_bytes' => $status['utilization']['memory_limit_bytes'] ?? 0,
+                        'cpu_absolute' => $status['utilization']['cpu_absolute'] ?? 0,
+                        'disk_bytes' => $status['utilization']['disk_bytes'] ?? 0,
+                        'network_rx_bytes' => $status['utilization']['network']['rx_bytes'] ?? 0,
+                        'network_tx_bytes' => $status['utilization']['network']['tx_bytes'] ?? 0,
+                        'uptime' => $status['utilization']['uptime'] ?? 0,
+                    ],
+                    'timestamp' => now()->toIso8601String(),
+                ]);
+            } catch (Exception $e) {
+                Log::debug("OngameCloud WebSocket: Failed to get server resources", [
+                    'connection_id' => $connectionId,
+                    'error' => $e->getMessage(),
                 ]);
             }
         }
