@@ -32,36 +32,24 @@ class WebSocketService
         $connectionId = spl_object_hash($connection);
         $ipAddress = $connection->getRemoteAddress() ?? 'unknown';
         
-        $buffer = '';
-        $handshakeDone = false;
+        $this->addConnection($connectionId, $ipAddress);
+        
+        Log::info("OngameCloud WebSocket: New connection", [
+            'connection_id' => $connectionId,
+            'ip' => $ipAddress,
+        ]);
 
-        $connection->on('data', function ($data) use ($connection, $connectionId, $ipAddress, &$buffer, &$handshakeDone) {
-            if (!$handshakeDone) {
-                $buffer .= $data;
-                
-                if (strpos($buffer, "\r\n\r\n") !== false) {
-                    $this->performHandshake($connection, $buffer);
-                    $handshakeDone = true;
-                    
-                    $this->addConnection($connectionId, $ipAddress);
-                    
-                    Log::info("OngameCloud WebSocket: New connection", [
-                        'connection_id' => $connectionId,
-                        'ip' => $ipAddress,
-                    ]);
+        $this->sendMessage($connection, [
+            'type' => 'connected',
+            'message' => 'Connected to Ongamecloud WebSocket server',
+            'connection_id' => $connectionId,
+            'timestamp' => now()->toIso8601String(),
+        ]);
 
-                    $this->sendMessage($connection, [
-                        'type' => 'connected',
-                        'message' => 'Connected to Ongamecloud WebSocket server',
-                        'connection_id' => $connectionId,
-                        'timestamp' => now()->toIso8601String(),
-                    ]);
-                }
-            } else {
-                $decoded = $this->decodeFrame($data);
-                if ($decoded !== null) {
-                    $this->handleData($connection, $connectionId, $decoded, $ipAddress);
-                }
+        $connection->on('data', function ($data) use ($connection, $connectionId, $ipAddress) {
+            $decoded = $this->decodeFrame($data);
+            if ($decoded !== null) {
+                $this->handleData($connection, $connectionId, $decoded, $ipAddress);
             }
         });
 
@@ -80,21 +68,6 @@ class WebSocketService
                 'error' => $e->getMessage(),
             ]);
         });
-    }
-
-    private function performHandshake($connection, $headers): void
-    {
-        if (preg_match('/Sec-WebSocket-Key: (.*)\r\n/', $headers, $matches)) {
-            $key = trim($matches[1]);
-            $acceptKey = base64_encode(sha1($key . '258EAFA5-E914-47DA-95CA-C5AB0DC85B11', true));
-            
-            $response = "HTTP/1.1 101 Switching Protocols\r\n";
-            $response .= "Upgrade: websocket\r\n";
-            $response .= "Connection: Upgrade\r\n";
-            $response .= "Sec-WebSocket-Accept: {$acceptKey}\r\n\r\n";
-            
-            $connection->write($response);
-        }
     }
 
     private function decodeFrame($data): ?string
