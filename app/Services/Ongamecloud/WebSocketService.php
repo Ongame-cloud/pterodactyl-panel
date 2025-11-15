@@ -10,7 +10,6 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use React\Http\Message\Response;
 use React\Promise\Promise;
-use React\Stream\ThroughStream;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Ratchet\RFC6455\Messaging\Frame;
@@ -37,9 +36,15 @@ class WebSocketService
 
     public function handleUpgrade(ServerRequestInterface $request, ResponseInterface $psrResponse): Response
     {
-        $stream = new ThroughStream();
-        
-        $stream->on('pipe', function ($connection) use ($request, $stream) {
+        return new Response(
+            101,
+            array_merge($psrResponse->getHeaders(), [
+                'X-Powered-By' => 'Ongamecloud WebSocket Server',
+            ]),
+            '',
+            '1.1',
+            'Switching Protocols',
+            function ($connection) use ($request) {
                 $connectionId = spl_object_hash($connection);
                 $ipAddress = $request->getServerParams()['REMOTE_ADDR'] ?? 'unknown';
                 
@@ -50,8 +55,6 @@ class WebSocketService
                     'ip' => $ipAddress,
                 ]);
 
-                $firstMessage = true;
-                
                 $buffer = new MessageBuffer(
                     new CloseFrameChecker(),
                     function (Frame $frame) use ($connection, $connectionId, $ipAddress) {
@@ -64,26 +67,22 @@ class WebSocketService
                         ]);
                         
                         if ($frame->getOpcode() === Frame::OP_CLOSE) {
-                            $closeFrame = chr(0x88) . chr(0x00);
-                            $connection->end($closeFrame);
+                            $connection->end(Frame::create('', true, Frame::OP_CLOSE)->maskPayload()->getContents());
                         } elseif ($frame->getOpcode() === Frame::OP_PING) {
-                            $pongFrame = chr(0x8A) . chr(strlen($frame->getPayload())) . $frame->getPayload();
-                            $connection->write($pongFrame);
+                            $connection->write(Frame::create($frame->getPayload(), true, Frame::OP_PONG)->maskPayload()->getContents());
                         }
                     },
                     true
                 );
 
-                $connection->on('data', function ($data) use ($buffer, $connection, $connectionId, &$firstMessage) {
-                    if ($firstMessage) {
-                        $firstMessage = false;
-                        $this->sendFrame($connection, [
-                            'type' => 'connected',
-                            'message' => 'Connected to Ongamecloud WebSocket server',
-                            'connection_id' => $connectionId,
-                            'timestamp' => now()->toIso8601String(),
-                        ]);
-                    }
+                $this->sendFrame($connection, [
+                    'type' => 'connected',
+                    'message' => 'Connected to Ongamecloud WebSocket server',
+                    'connection_id' => $connectionId,
+                    'timestamp' => now()->toIso8601String(),
+                ]);
+
+                $connection->on('data', function ($data) use ($buffer) {
                     $buffer->onData($data);
                 });
 
@@ -102,14 +101,7 @@ class WebSocketService
                         'error' => $e->getMessage(),
                     ]);
                 });
-        });
-        
-        return new Response(
-            101,
-            array_merge($psrResponse->getHeaders(), [
-                'X-Powered-By' => 'Ongamecloud WebSocket Server',
-            ]),
-            $stream
+            }
         );
     }
 
