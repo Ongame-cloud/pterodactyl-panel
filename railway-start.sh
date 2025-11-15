@@ -29,6 +29,8 @@ echo "Clearing caches..."
 php artisan config:clear 2>/dev/null || true
 php artisan cache:clear 2>/dev/null || true
 php artisan view:clear 2>/dev/null || true
+php artisan route:clear 2>/dev/null || true
+rm -rf bootstrap/cache/*.php 2>/dev/null || true
 
 echo "Setting up nginx..."
 cat > /etc/nginx/nginx.conf << EOF
