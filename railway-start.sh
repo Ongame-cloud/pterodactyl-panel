@@ -19,7 +19,7 @@ if [ -z "$APP_KEY" ] || [ "$APP_KEY" = "" ]; then
 fi
 
 echo "Running migrations..."
-php artisan migrate --force --no-interaction --isolated 2>&1 || echo "Migration skipped"
+php artisan migrate --force --no-interaction 2>&1 || echo "Migration skipped"
 
 echo "Clearing caches..."
 php artisan config:clear 2>/dev/null || true
