@@ -17,6 +17,8 @@ chmod -R 777 storage bootstrap/cache
 if [ -z "$APP_KEY" ] || [ "$APP_KEY" = "" ]; then
     echo "Generating APP_KEY..."
     php artisan key:generate --force
+else
+    echo "Using existing APP_KEY from environment"
 fi
 
 export CACHE_DRIVER=array
