@@ -43,6 +43,7 @@
         "prologue/alerts": "~1.2.0",
         "psr/cache": "~3.0.0",
         "react/socket": "^1.15",
+        "react/http": "^1.10",
         "textalk/websocket": "^1.6",
         "s1lentium/iptools": "~1.2.0",
         "spatie/laravel-fractal": "~6.2.1",
