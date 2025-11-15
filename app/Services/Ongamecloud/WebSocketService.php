@@ -43,12 +43,27 @@ class WebSocketService
         try {
             $decoded = $this->decodeFrame($data);
             if ($decoded === null) {
+                Log::warning("OngameCloud WebSocket: Failed to decode frame", [
+                    'connection_id' => $connectionId,
+                    'data_length' => strlen($data),
+                    'first_bytes' => bin2hex(substr($data, 0, min(20, strlen($data))))
+                ]);
                 return;
             }
             
+            Log::debug("OngameCloud WebSocket: Frame decoded", [
+                'connection_id' => $connectionId,
+                'decoded' => $decoded
+            ]);
+            
             $message = json_decode($decoded, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new Exception('Invalid JSON format');
+                Log::error("OngameCloud WebSocket: JSON decode error", [
+                    'connection_id' => $connectionId,
+                    'decoded' => $decoded,
+                    'json_error' => json_last_error_msg()
+                ]);
+                throw new Exception('Invalid JSON format: ' . json_last_error_msg());
             }
             
             if (!isset($message['type'])) {
