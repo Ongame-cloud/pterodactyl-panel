@@ -182,6 +182,12 @@ fi
 
 echo ""
 echo "=== Application is running ==="
+echo "Starting Ongamecloud WebSocket server..."
+
+php artisan ongamecloud:websocket > storage/logs/websocket.log 2>&1 &
+WEBSOCKET_PID=$!
+echo "WebSocket server started with PID: $WEBSOCKET_PID"
+
 echo "Logs will appear below..."
 echo ""
 
