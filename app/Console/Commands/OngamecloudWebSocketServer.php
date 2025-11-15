@@ -3,10 +3,9 @@
 namespace Pterodactyl\Console\Commands;
 
 use Illuminate\Console\Command;
-use Ratchet\Server\IoServer;
-use Ratchet\Http\HttpServer;
-use Ratchet\WebSocket\WsServer;
-use Pterodactyl\Services\Ongamecloud\WebSocketHandler;
+use React\EventLoop\Loop;
+use React\Socket\SocketServer;
+use Pterodactyl\Services\Ongamecloud\WebSocketService;
 
 class OngamecloudWebSocketServer extends Command
 {
@@ -16,7 +15,7 @@ class OngamecloudWebSocketServer extends Command
 
     protected $description = 'Start the Ongamecloud WebSocket server for backend communication';
 
-    public function handle()
+    public function handle(WebSocketService $service)
     {
         if (!config('ongamecloud.websocket.enabled')) {
             $this->error('WebSocket server is disabled in configuration');
@@ -35,18 +34,14 @@ class OngamecloudWebSocketServer extends Command
         $this->info('Press Ctrl+C to stop the server');
 
         try {
-            $handler = app(WebSocketHandler::class);
+            $socket = new SocketServer("{$host}:{$port}");
             
-            $server = IoServer::factory(
-                new HttpServer(
-                    new WsServer($handler)
-                ),
-                $port,
-                $host
-            );
+            $socket->on('connection', function ($connection) use ($service) {
+                $service->handleConnection($connection);
+            });
 
             $this->info('WebSocket server started successfully');
-            $server->run();
+            Loop::run();
         } catch (\Exception $e) {
             $this->error('Failed to start WebSocket server: ' . $e->getMessage());
             return 1;

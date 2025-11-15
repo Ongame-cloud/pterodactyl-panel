@@ -20,9 +20,143 @@ class WebSocketService
         'failed_requests' => 0,
     ];
 
+    private array $authenticated = [];
+
     public function __construct(
         private DaemonPowerRepository $powerRepository
     ) {
+    }
+
+    public function handleConnection($connection): void
+    {
+        $connectionId = spl_object_hash($connection);
+        $ipAddress = $connection->getRemoteAddress() ?? 'unknown';
+        
+        $this->addConnection($connectionId, $ipAddress);
+        
+        Log::info("OngameCloud WebSocket: New connection", [
+            'connection_id' => $connectionId,
+            'ip' => $ipAddress,
+        ]);
+
+        $connection->write(json_encode([
+            'type' => 'connected',
+            'message' => 'Connected to Ongamecloud WebSocket server',
+            'connection_id' => $connectionId,
+            'timestamp' => now()->toIso8601String(),
+        ]) . "\n");
+
+        $connection->on('data', function ($data) use ($connection, $connectionId, $ipAddress) {
+            $this->handleData($connection, $connectionId, $data, $ipAddress);
+        });
+
+        $connection->on('close', function () use ($connectionId) {
+            $this->removeConnection($connectionId);
+            Log::info("OngameCloud WebSocket: Connection closed", [
+                'connection_id' => $connectionId,
+            ]);
+        });
+
+        $connection->on('error', function (\Exception $e) use ($connectionId) {
+            Log::error("OngameCloud WebSocket: Connection error", [
+                'connection_id' => $connectionId,
+                'error' => $e->getMessage(),
+            ]);
+        });
+    }
+
+    private function handleData($connection, string $connectionId, string $data, string $ipAddress): void
+    {
+        try {
+            $messages = explode("\n", trim($data));
+            
+            foreach ($messages as $msg) {
+                if (empty($msg)) continue;
+                
+                $decoded = json_decode($msg, true);
+                
+                if (json_last_error() !== JSON_ERROR_NONE) {
+                    throw new Exception('Invalid JSON format');
+                }
+
+                if (!isset($decoded['type'])) {
+                    throw new Exception('Missing message type');
+                }
+
+                switch ($decoded['type']) {
+                    case 'auth':
+                        $this->handleAuth($connection, $connectionId, $decoded);
+                        break;
+
+                    case 'action':
+                        if (!isset($this->authenticated[$connectionId]) || !$this->authenticated[$connectionId]) {
+                            $connection->write(json_encode([
+                                'type' => 'error',
+                                'error' => 'Not authenticated. Send auth message first.',
+                                'timestamp' => now()->toIso8601String(),
+                            ]) . "\n");
+                            return;
+                        }
+                        
+                        $this->incrementRequestCount($connectionId);
+                        $response = $this->handleMessage($connectionId, $decoded, $ipAddress);
+                        $connection->write(json_encode([
+                            'type' => 'action_response',
+                            ...$response,
+                        ]) . "\n");
+                        break;
+
+                    case 'ping':
+                        $connection->write(json_encode([
+                            'type' => 'pong',
+                            'timestamp' => now()->toIso8601String(),
+                        ]) . "\n");
+                        break;
+
+                    default:
+                        throw new Exception('Unknown message type: ' . $decoded['type']);
+                }
+            }
+        } catch (Exception $e) {
+            Log::error("OngameCloud WebSocket: Message error", [
+                'connection_id' => $connectionId,
+                'error' => $e->getMessage(),
+            ]);
+
+            $connection->write(json_encode([
+                'type' => 'error',
+                'error' => $e->getMessage(),
+                'timestamp' => now()->toIso8601String(),
+            ]) . "\n");
+        }
+    }
+
+    private function handleAuth($connection, string $connectionId, array $data): void
+    {
+        if (!isset($data['token'])) {
+            $connection->write(json_encode([
+                'type' => 'auth_response',
+                'success' => false,
+                'error' => 'Missing authentication token',
+            ]) . "\n");
+            return;
+        }
+
+        $authenticated = $this->authenticate($data['token']);
+        $this->authenticated[$connectionId] = $authenticated;
+
+        $connection->write(json_encode([
+            'type' => 'auth_response',
+            'success' => $authenticated,
+            'message' => $authenticated ? 'Authentication successful' : 'Authentication failed',
+            'timestamp' => now()->toIso8601String(),
+        ]) . "\n");
+
+        if (!$authenticated) {
+            Log::warning("OngameCloud WebSocket: Failed authentication attempt", [
+                'connection_id' => $connectionId,
+            ]);
+        }
     }
 
     public function authenticate(string $token): bool
