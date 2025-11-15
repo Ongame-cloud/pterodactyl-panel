@@ -38,6 +38,8 @@ class OngamecloudWebSocketServer extends Command
         $clients = [];
         
         while (true) {
+            $clients = array_filter($clients, fn($c) => is_resource($c) && !feof($c));
+            
             $read = array_merge([$socket], $clients);
             $write = null;
             $except = null;
@@ -56,11 +58,14 @@ class OngamecloudWebSocketServer extends Command
             }
             
             foreach ($read as $client) {
-                $data = fread($client, 8192);
+                $data = @fread($client, 8192);
                 if ($data === false || $data === '') {
                     $service->onClose($client);
-                    unset($clients[array_search($client, $clients)]);
-                    fclose($client);
+                    $key = array_search($client, $clients);
+                    if ($key !== false) {
+                        unset($clients[$key]);
+                    }
+                    @fclose($client);
                 } else {
                     $service->onMessage($client, $data);
                 }
