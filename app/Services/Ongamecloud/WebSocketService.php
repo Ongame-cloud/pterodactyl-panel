@@ -121,7 +121,7 @@ class WebSocketService
     private function sendFrame($connection, array $data): void
     {
         $json = json_encode($data);
-        $frame = Frame::create($json, true, Frame::OP_TEXT);
+        $frame = new Frame($json, true, Frame::OP_TEXT);
         $connection->write($frame->getContents());
     }
 
