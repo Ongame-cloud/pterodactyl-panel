@@ -129,13 +129,29 @@
         <div class="col-xs-12">
             <div class="box">
                 <div class="box-header with-border">
-                    <h3 class="box-title">Authentication Token</h3>
+                    <h3 class="box-title">WebSocket Connection</h3>
                 </div>
                 <div class="box-body">
                     <div class="row">
                         <div class="col-md-12">
                             <div class="form-group">
-                                <label class="control-label">Current Token</label>
+                                <label class="control-label">WebSocket URL</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="websocket-url" value="{{ ($ssl ? 'wss://' : 'ws://') . $host . ':' . $port }}" readonly />
+                                    <span class="input-group-btn">
+                                        <button class="btn btn-success" type="button" onclick="copyWebSocketUrl()">
+                                            <i class="fa fa-copy"></i> Copy URL
+                                        </button>
+                                    </span>
+                                </div>
+                                <p class="text-muted"><small>Use this URL to connect your backend to the WebSocket server. For Railway, use your public domain instead of {{ $host }}.</small></p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label class="control-label">Authentication Token</label>
                                 <div class="input-group">
                                     <input type="text" class="form-control" id="auth-token" value="{{ $auth_token ?? 'Not configured' }}" readonly />
                                     <span class="input-group-btn">
@@ -320,14 +336,31 @@
 @section('footer-scripts')
     @parent
     <script>
+        function copyWebSocketUrl() {
+            const urlInput = document.getElementById('websocket-url');
+            urlInput.select();
+            document.execCommand('copy');
+            
+            swal({
+                type: 'success',
+                title: 'Copied!',
+                text: 'WebSocket URL copied to clipboard',
+                timer: 2000,
+                showConfirmButton: false
+            });
+        }
+
         function copyToken() {
             const tokenInput = document.getElementById('auth-token');
             tokenInput.select();
             document.execCommand('copy');
+            
             swal({
                 type: 'success',
                 title: 'Copied!',
-                text: 'Token copied to clipboard'
+                text: 'Authentication token copied to clipboard',
+                timer: 2000,
+                showConfirmButton: false
             });
         }
 
