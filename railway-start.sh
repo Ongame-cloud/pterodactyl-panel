@@ -40,6 +40,9 @@ php artisan route:clear 2>/dev/null || true
 rm -rf bootstrap/cache/*.php 2>/dev/null || true
 
 echo "Setting up nginx..."
+mkdir -p /tmp/nginx/fastcgi /tmp/nginx/proxy /tmp/nginx/client_body /tmp/nginx/uwsgi /tmp/nginx/scgi
+chown -R nobody:nobody /tmp/nginx
+
 cat > /etc/nginx/nginx.conf << EOF
 user nobody;
 worker_processes auto;
@@ -63,6 +66,12 @@ http {
     keepalive_timeout 65;
     types_hash_max_size 2048;
     client_max_body_size 100M;
+    
+    fastcgi_temp_path /tmp/nginx/fastcgi;
+    proxy_temp_path /tmp/nginx/proxy;
+    client_body_temp_path /tmp/nginx/client_body;
+    uwsgi_temp_path /tmp/nginx/uwsgi;
+    scgi_temp_path /tmp/nginx/scgi;
     
     map \$http_upgrade \$connection_upgrade {
         default upgrade;
