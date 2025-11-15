@@ -21,6 +21,8 @@ fi
 
 export CACHE_DRIVER=array
 export SESSION_DRIVER=file
+export LOG_CHANNEL=stderr
+export APP_DEBUG=true
 
 echo "Running migrations..."
 php artisan migrate --force --no-interaction 2>&1 || echo "Migration failed, continuing anyway..."
@@ -117,6 +119,8 @@ clear_env = no
 catch_workers_output = yes
 php_admin_value[error_log] = /dev/stderr
 php_admin_flag[log_errors] = on
+php_admin_value[display_errors] = on
+php_admin_value[display_startup_errors] = on
 EOF
 
 echo "Starting PHP-FPM..."
