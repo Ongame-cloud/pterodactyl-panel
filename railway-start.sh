@@ -148,14 +148,26 @@ echo "Testing Laravel..."
 sleep 2
 
 curl -s http://127.0.0.1:$PORT/health.php || echo "Health check failed"
-curl -s http://127.0.0.1:$PORT/ > /tmp/test.html 2>&1 || echo "Laravel test failed"
-cat /tmp/test.html | head -20
+RESPONSE=$(curl -s -w "\n%{http_code}" http://127.0.0.1:$PORT/)
+HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+BODY=$(echo "$RESPONSE" | head -n-1)
+
+if [ "$HTTP_CODE" = "500" ]; then
+    echo "Laravel returning 500 error"
+    echo "Checking logs..."
+    if [ -f storage/logs/laravel-$(date +%Y-%m-%d).log ]; then
+        echo "=== Laravel Error Log ==="
+        tail -100 storage/logs/laravel-$(date +%Y-%m-%d).log
+    fi
+else
+    echo "HTTP $HTTP_CODE"
+    echo "$BODY" | head -20
+fi
 
 echo ""
 echo "=== Application is running ==="
 echo "Logs will appear below..."
 echo ""
-
-tail -f storage/logs/*.log &
+tail -f storage/logs/*.log 2>/dev/null &
 
 wait $NGINX_PID
