@@ -1,0 +1,57 @@
+ONGAMECLOUD WEBSOCKET - ÉTAPES D'INSTALLATION
+
+1. Installer les dépendances:
+   composer require cboden/ratchet:^0.4.4
+
+2. Exécuter la migration:
+   php artisan migrate
+
+3. Ajouter les variables d'environnement dans .env:
+   ONGAMECLOUD_WS_ENABLED=true
+   ONGAMECLOUD_WS_HOST=0.0.0.0
+   ONGAMECLOUD_WS_PORT=8090
+   ONGAMECLOUD_WS_SSL=false
+   ONGAMECLOUD_WS_AUTH_TOKEN=
+   ONGAMECLOUD_WS_MAX_CONNECTIONS=100
+   ONGAMECLOUD_WS_TIMEOUT=30
+   ONGAMECLOUD_WS_LOG_ENABLED=true
+   ONGAMECLOUD_WS_LOG_RETENTION_DAYS=7
+
+4. Générer le token d'authentification:
+   - Aller dans Admin Panel > Settings > Ongamecloud
+   - Cliquer sur "Generate New" pour créer un token sécurisé
+   - Copier le token et l'ajouter dans ONGAMECLOUD_WS_AUTH_TOKEN
+
+5. Démarrer le serveur WebSocket:
+   php artisan ongamecloud:websocket
+
+6. Configuration Supervisor (production):
+   [program:ongamecloud-websocket]
+   command=php /path/to/pterodactyl/artisan ongamecloud:websocket
+   directory=/path/to/pterodactyl
+   autostart=true
+   autorestart=true
+   user=www-data
+   redirect_stderr=true
+   stdout_logfile=/var/log/ongamecloud-websocket.log
+
+UTILISATION DEPUIS LE BACKEND:
+
+Connexion:
+const ws = new WebSocket('ws://pterodactyl-host:8090');
+
+Authentification:
+ws.send(JSON.stringify({
+    type: 'auth',
+    token: 'votre-token-ici'
+}));
+
+Actions serveur:
+ws.send(JSON.stringify({
+    type: 'action',
+    authenticated: true,
+    action: 'start',
+    server_short_id: 'abc123de'
+}));
+
+Actions disponibles: start, stop, restart, kill

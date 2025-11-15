@@ -25,6 +25,7 @@
         "ext-posix": "*",
         "ext-zip": "*",
         "aws/aws-sdk-php": "~3.324.7",
+        "cboden/ratchet": "^0.4.4",
         "guzzlehttp/guzzle": "~7.9.2",
         "hashids/hashids": "~5.0.2",
         "laracasts/utilities": "~3.2.3",
