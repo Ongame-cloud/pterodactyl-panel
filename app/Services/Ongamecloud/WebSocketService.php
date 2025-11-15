@@ -587,11 +587,7 @@ class WebSocketService
                     'state' => $status['state'] ?? 'offline',
                     'resources' => [
                         'memory_bytes' => $status['utilization']['memory_bytes'] ?? 0,
-                        'memory_limit_bytes' => $status['utilization']['memory_limit_bytes'] ?? 0,
                         'cpu_absolute' => $status['utilization']['cpu_absolute'] ?? 0,
-                        'disk_bytes' => $status['utilization']['disk_bytes'] ?? 0,
-                        'network_rx_bytes' => $status['utilization']['network']['rx_bytes'] ?? 0,
-                        'network_tx_bytes' => $status['utilization']['network']['tx_bytes'] ?? 0,
                         'uptime' => $status['utilization']['uptime'] ?? 0,
                     ],
                     'timestamp' => now()->toIso8601String(),
