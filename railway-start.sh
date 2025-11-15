@@ -11,9 +11,8 @@ if [ ! -f .env ]; then
 fi
 
 mkdir -p storage/logs storage/framework/sessions storage/framework/views storage/framework/cache/data bootstrap/cache
+chown -R nobody:nobody storage bootstrap/cache
 chmod -R 777 storage bootstrap/cache
-find storage -type d -exec chmod 777 {} \;
-find storage -type f -exec chmod 666 {} \;
 
 if [ -z "$APP_KEY" ] || [ "$APP_KEY" = "" ]; then
     echo "Generating APP_KEY..."
