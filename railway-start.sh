@@ -10,7 +10,7 @@ if [ ! -f .env ]; then
     cp .env.example .env
 fi
 
-mkdir -p storage/logs storage/framework/sessions storage/framework/views storage/framework/cache bootstrap/cache
+mkdir -p storage/logs storage/framework/sessions storage/framework/views storage/framework/cache/data bootstrap/cache
 chmod -R 777 storage bootstrap/cache
 
 if [ -z "$APP_KEY" ] || [ "$APP_KEY" = "" ]; then
