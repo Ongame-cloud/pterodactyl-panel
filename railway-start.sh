@@ -174,9 +174,9 @@ echo "=== Application is running ==="
 echo "Logs will appear below..."
 echo ""
 
+mkdir -p storage/logs
 touch storage/logs/laravel.log
-ln -sf /dev/stdout storage/logs/laravel.log
 
-tail -f storage/logs/*.log /var/log/nginx/*.log 2>/dev/null &
+tail -f storage/logs/*.log 2>/dev/null &
 
 wait $NGINX_PID
