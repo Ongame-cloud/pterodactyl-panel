@@ -3,15 +3,9 @@
 namespace Pterodactyl\Console\Commands;
 
 use Illuminate\Console\Command;
-use React\EventLoop\Loop;
-use React\Socket\SocketServer;
-use React\Http\HttpServer;
-use React\Http\Message\Response;
-use Psr\Http\Message\ServerRequestInterface;
 use Pterodactyl\Services\Ongamecloud\WebSocketService;
-use Ratchet\RFC6455\Messaging\Frame;
-use Ratchet\RFC6455\Handshake\ServerNegotiator;
-use Ratchet\RFC6455\Handshake\RequestVerifier;
+use Workerman\Worker;
+use Workerman\Connection\TcpConnection;
 
 class OngamecloudWebSocketServer extends Command
 {
@@ -23,13 +17,13 @@ class OngamecloudWebSocketServer extends Command
 
     public function handle(WebSocketService $service)
     {
+        $host = config('app.websocket_host', '0.0.0.0');
+        $port = config('app.websocket_port', 8090);
+
         if (!config('ongamecloud.websocket.enabled')) {
             $this->error('WebSocket server is disabled in configuration');
             return 1;
         }
-
-        $host = $this->option('host') ?? config('ongamecloud.websocket.host');
-        $port = $this->option('port') ?? config('ongamecloud.websocket.port');
 
         if (empty(config('ongamecloud.websocket.auth_token'))) {
             $this->error('No authentication token configured. Set ONGAMECLOUD_WS_AUTH_TOKEN in .env');
@@ -37,35 +31,33 @@ class OngamecloudWebSocketServer extends Command
         }
 
         $this->info("Starting Ongamecloud WebSocket server on {$host}:{$port}");
-        $this->info('Press Ctrl+C to stop the server');
 
-        try {
-            $negotiator = new ServerNegotiator(new RequestVerifier());
-            
-            $server = new HttpServer(function (ServerRequestInterface $request) use ($service, $negotiator) {
-                $psrResponse = $negotiator->handshake($request);
-                
-                if ($psrResponse->getStatusCode() !== 101) {
-                    return new Response(
-                        $psrResponse->getStatusCode(),
-                        $psrResponse->getHeaders(),
-                        (string) $psrResponse->getBody()
-                    );
-                }
-                
-                return $service->handleUpgrade($request, $psrResponse);
-            });
-
-            $socket = new SocketServer("{$host}:{$port}");
-            $server->listen($socket);
-
-            $this->info('WebSocket server started successfully');
-            Loop::run();
-        } catch (\Exception $e) {
-            $this->error('Failed to start WebSocket server: ' . $e->getMessage());
-            return 1;
-        }
-
+        $worker = new Worker("websocket://{$host}:{$port}");
+        $worker->count = 1;
+        $worker->name = 'ongamecloud-websocket';
+        
+        $worker->onWorkerStart = function() {
+            echo "Ongamecloud WebSocket server started successfully\n";
+        };
+        
+        $worker->onConnect = function(TcpConnection $connection) use ($service) {
+            $service->onConnect($connection);
+        };
+        
+        $worker->onMessage = function(TcpConnection $connection, $data) use ($service) {
+            $service->onMessage($connection, $data);
+        };
+        
+        $worker->onClose = function(TcpConnection $connection) use ($service) {
+            $service->onClose($connection);
+        };
+        
+        $worker->onError = function(TcpConnection $connection, $code, $msg) {
+            echo "Error: $msg\n";
+        };
+        
+        Worker::runAll();
+        
         return 0;
     }
 }
