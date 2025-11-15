@@ -15,10 +15,12 @@ chown -R www-data:www-data storage bootstrap/cache
 chmod -R 777 storage bootstrap/cache
 
 if [ -z "$APP_KEY" ] || [ "$APP_KEY" = "" ]; then
-    echo "Generating APP_KEY..."
-    php artisan key:generate --force
+    echo "ERROR: APP_KEY is not set in Railway environment variables!"
+    echo "Please set APP_KEY in Railway dashboard to avoid session/encryption issues"
+    echo "Generate one with: php artisan key:generate --show"
+    exit 1
 else
-    echo "Using existing APP_KEY from environment"
+    echo "Using APP_KEY from environment"
 fi
 
 export CACHE_DRIVER=array
