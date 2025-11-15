@@ -55,6 +55,8 @@ class WebSocketService
                     'ip' => $ipAddress,
                 ]);
 
+                $firstMessage = true;
+                
                 $buffer = new MessageBuffer(
                     new CloseFrameChecker(),
                     function (Frame $frame) use ($connection, $connectionId, $ipAddress) {
@@ -67,22 +69,26 @@ class WebSocketService
                         ]);
                         
                         if ($frame->getOpcode() === Frame::OP_CLOSE) {
-                            $connection->end(Frame::create('', true, Frame::OP_CLOSE)->maskPayload()->getContents());
+                            $closeFrame = chr(0x88) . chr(0x00);
+                            $connection->end($closeFrame);
                         } elseif ($frame->getOpcode() === Frame::OP_PING) {
-                            $connection->write(Frame::create($frame->getPayload(), true, Frame::OP_PONG)->maskPayload()->getContents());
+                            $pongFrame = chr(0x8A) . chr(strlen($frame->getPayload())) . $frame->getPayload();
+                            $connection->write($pongFrame);
                         }
                     },
                     true
                 );
 
-                $this->sendFrame($connection, [
-                    'type' => 'connected',
-                    'message' => 'Connected to Ongamecloud WebSocket server',
-                    'connection_id' => $connectionId,
-                    'timestamp' => now()->toIso8601String(),
-                ]);
-
-                $connection->on('data', function ($data) use ($buffer) {
+                $connection->on('data', function ($data) use ($buffer, $connection, $connectionId, &$firstMessage) {
+                    if ($firstMessage) {
+                        $firstMessage = false;
+                        $this->sendFrame($connection, [
+                            'type' => 'connected',
+                            'message' => 'Connected to Ongamecloud WebSocket server',
+                            'connection_id' => $connectionId,
+                            'timestamp' => now()->toIso8601String(),
+                        ]);
+                    }
                     $buffer->onData($data);
                 });
 
