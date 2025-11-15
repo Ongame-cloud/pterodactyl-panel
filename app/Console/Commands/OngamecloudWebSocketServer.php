@@ -47,8 +47,11 @@ class OngamecloudWebSocketServer extends Command
             $except = null;
             
             if (stream_select($read, $write, $except, 0, 200000) < 1) {
+                $service->checkPendingConfirmations();
                 continue;
             }
+            
+            $service->checkPendingConfirmations();
             
             if (in_array($socket, $read)) {
                 $client = stream_socket_accept($socket, -1);

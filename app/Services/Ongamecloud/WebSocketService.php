@@ -6,6 +6,7 @@ use Exception;
 use Pterodactyl\Models\Server;
 use Pterodactyl\Models\OngamecloudWebSocketLog;
 use Pterodactyl\Repositories\Wings\DaemonPowerRepository;
+use Pterodactyl\Repositories\Wings\DaemonServerRepository;
 use Illuminate\Support\Facades\Log;
 
 class WebSocketService
@@ -13,9 +14,11 @@ class WebSocketService
     private array $connections = [];
     private array $authenticated = [];
     private array $handshakes = [];
+    private array $pendingConfirmations = [];
 
     public function __construct(
-        private DaemonPowerRepository $powerRepository
+        private DaemonPowerRepository $powerRepository,
+        private DaemonServerRepository $serverRepository
     ) {
     }
 
@@ -103,7 +106,7 @@ class WebSocketService
                         return;
                     }
                     
-                    $response = $this->handleAction($connectionId, $message);
+                    $response = $this->handleAction($client, $connectionId, $message);
                     $this->send($client, [
                         'type' => 'action_response',
                         ...$response,
@@ -141,6 +144,7 @@ class WebSocketService
         unset($this->connections[$connectionId]);
         unset($this->authenticated[$connectionId]);
         unset($this->handshakes[$connectionId]);
+        unset($this->pendingConfirmations[$connectionId]);
         
         Log::info("OngameCloud WebSocket: Connection closed", ['connection_id' => $connectionId]);
     }
@@ -314,7 +318,7 @@ class WebSocketService
         Log::info("OngameCloud WebSocket: Successful authentication", ['connection_id' => $connectionId]);
     }
 
-    private function handleAction(int $connectionId, array $data): array
+    private function handleAction($client, int $connectionId, array $data): array
     {
         if (!isset($data['action']) || !isset($data['server_short_id'])) {
             return [
@@ -354,6 +358,10 @@ class WebSocketService
                 'server' => $serverShortId,
             ]);
             
+            if (in_array($action, ['start', 'restart'])) {
+                $this->scheduleStatusCheck($client, $connectionId, $server, $action);
+            }
+            
             return [
                 'success' => true,
                 'action' => $action,
@@ -374,6 +382,64 @@ class WebSocketService
                 'error' => $e->getMessage(),
                 'timestamp' => now()->toIso8601String(),
             ];
+        }
+    }
+
+    private function scheduleStatusCheck($client, int $connectionId, Server $server, string $action): void
+    {
+        $this->pendingConfirmations[$connectionId] = [
+            'client' => $client,
+            'server' => $server,
+            'action' => $action,
+            'started_at' => time(),
+            'checks' => 0,
+        ];
+    }
+
+    public function checkPendingConfirmations(): void
+    {
+        foreach ($this->pendingConfirmations as $connectionId => $pending) {
+            $elapsed = time() - $pending['started_at'];
+            
+            if ($elapsed > 60) {
+                unset($this->pendingConfirmations[$connectionId]);
+                continue;
+            }
+            
+            if ($pending['checks'] >= 30) {
+                unset($this->pendingConfirmations[$connectionId]);
+                continue;
+            }
+            
+            $this->pendingConfirmations[$connectionId]['checks']++;
+            
+            try {
+                $status = $this->serverRepository->setServer($pending['server'])->getDetails();
+                
+                if (isset($status['current_state']) && $status['current_state'] === 'running') {
+                    $this->send($pending['client'], [
+                        'type' => 'action_confirmed',
+                        'action' => $pending['action'],
+                        'server_short_id' => $pending['server']->uuidShort,
+                        'status' => 'running',
+                        'message' => 'Server is now running',
+                        'timestamp' => now()->toIso8601String(),
+                    ]);
+                    
+                    Log::info("OngameCloud WebSocket: Action confirmed", [
+                        'connection_id' => $connectionId,
+                        'action' => $pending['action'],
+                        'server' => $pending['server']->uuidShort,
+                    ]);
+                    
+                    unset($this->pendingConfirmations[$connectionId]);
+                }
+            } catch (Exception $e) {
+                Log::debug("OngameCloud WebSocket: Status check failed", [
+                    'connection_id' => $connectionId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 }
