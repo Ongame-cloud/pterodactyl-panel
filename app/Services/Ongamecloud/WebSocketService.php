@@ -196,6 +196,8 @@ class WebSocketService
             "key_length" => strlen($key)
         ]);
         
+        $data = '';
+        
         $this->send($client, [
             'type' => 'connected',
             'message' => 'Connected to Ongamecloud WebSocket server',
@@ -203,13 +205,9 @@ class WebSocketService
             'timestamp' => now()->toIso8601String(),
         ]);
         
-        $headerEnd = strpos($data, "\r\n\r\n") + 4;
-        if ($headerEnd < strlen($data)) {
-            $remainingData = substr($data, $headerEnd);
-            if (!empty($remainingData)) {
-                $this->onMessage($client, $remainingData);
-            }
-        }
+        Log::debug("OngameCloud WebSocket: Buffer cleared after handshake", [
+            "connection_id" => $connectionId
+        ]);
     }
     private function send($client, array $data): void
     {
