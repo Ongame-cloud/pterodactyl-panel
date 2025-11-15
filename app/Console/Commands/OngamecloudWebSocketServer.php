@@ -31,6 +31,10 @@ class OngamecloudWebSocketServer extends Command
         }
 
         $this->info("Starting Ongamecloud WebSocket server on {$host}:{$port}");
+        
+        global $argv;
+        $argv[1] = 'start';
+        $argv[2] = '-d';
 
         $worker = new Worker("websocket://{$host}:{$port}");
         $worker->count = 1;
