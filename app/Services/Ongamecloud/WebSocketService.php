@@ -31,7 +31,6 @@ class WebSocketService
         Log::info("OngameCloud WebSocket: New connection", ['connection_id' => $connectionId]);
     }
 
-    }
     public function onMessage($client, string &$data): void
     {
         $connectionId = (int)$client;
