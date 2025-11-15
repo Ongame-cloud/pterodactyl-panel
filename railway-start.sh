@@ -21,7 +21,9 @@ fi
 
 export CACHE_DRIVER=array
 export SESSION_DRIVER=file
-export LOG_CHANNEL=stderr
+export LOG_CHANNEL=stack
+export LOG_STACK=stderr,single
+export LOG_LEVEL=debug
 export APP_DEBUG=true
 
 echo "Running migrations..."
