@@ -18,8 +18,9 @@ if [ -z "$APP_KEY" ] || [ "$APP_KEY" = "" ]; then
     php artisan key:generate --force
 fi
 
-echo "Running migrations..."
-php artisan migrate --force --no-interaction 2>&1 || echo "Migration failed, continuing anyway..."
+echo "Initializing database..."
+sh init-db.sh 2>&1 || echo "Database init failed, trying migrations..."
+php artisan migrate --force --no-interaction 2>&1 || echo "Migration also failed, continuing anyway..."
 
 echo "Clearing caches..."
 php artisan config:clear 2>/dev/null || true
