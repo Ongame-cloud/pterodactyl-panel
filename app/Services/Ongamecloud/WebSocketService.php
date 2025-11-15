@@ -123,12 +123,34 @@ class WebSocketService
     private function performHandshake($client, string &$data, int $connectionId): void
     {
         if (!str_contains($data, "\r\n\r\n")) {
+            Log::debug("OngameCloud WebSocket: Incomplete handshake data", [
+                "connection_id" => $connectionId,
+                "data_length" => strlen($data)
+            ]);
             return;
         }
         
-        preg_match('/Sec-WebSocket-Key: (.*)\r\n/', $data, $matches);
+        preg_match('/Sec-WebSocket-Key:\s*(.+?)\r\n/i', $data, $matches);
         if (empty($matches[1])) {
-            Log::error("OngameCloud WebSocket: Invalid handshake", ["connection_id" => $connectionId, "data_length" => strlen($data)]);
+            $headers = substr($data, 0, strpos($data, "\r\n\r\n"));
+            Log::error("OngameCloud WebSocket: Invalid handshake - missing Sec-WebSocket-Key", [
+                "connection_id" => $connectionId,
+                "data_length" => strlen($data),
+                "headers" => $headers
+            ]);
+            fclose($client);
+            return;
+        }
+        
+        preg_match('/Upgrade:\s*(.+?)\r\n/i', $data, $upgradeMatches);
+        preg_match('/Connection:\s*(.+?)\r\n/i', $data, $connectionMatches);
+        
+        if (empty($upgradeMatches[1]) || stripos($upgradeMatches[1], 'websocket') === false) {
+            Log::error("OngameCloud WebSocket: Invalid Upgrade header", [
+                "connection_id" => $connectionId,
+                "upgrade" => $upgradeMatches[1] ?? 'missing'
+            ]);
+            fclose($client);
             return;
         }
         
@@ -142,6 +164,11 @@ class WebSocketService
         
         fwrite($client, $response);
         $this->handshakes[$connectionId] = true;
+        
+        Log::info("OngameCloud WebSocket: Handshake successful", [
+            "connection_id" => $connectionId,
+            "key_length" => strlen($key)
+        ]);
         
         $headerEnd = strpos($data, "\r\n\r\n") + 4;
         $data = substr($data, $headerEnd);
