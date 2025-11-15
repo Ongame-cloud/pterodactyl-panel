@@ -35,6 +35,7 @@ cat > /etc/nginx/nginx.conf << EOF
 user nobody;
 worker_processes auto;
 pid /tmp/nginx.pid;
+error_log /dev/stderr info;
 
 events {
     worker_connections 1024;
@@ -44,8 +45,8 @@ http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
     
-    access_log /dev/stdout;
-    error_log /dev/stderr;
+    access_log /dev/stdout combined;
+    error_log /dev/stderr warn;
     
     sendfile on;
     tcp_nopush on;
@@ -172,6 +173,10 @@ echo ""
 echo "=== Application is running ==="
 echo "Logs will appear below..."
 echo ""
-tail -f storage/logs/*.log 2>/dev/null &
+
+touch storage/logs/laravel.log
+ln -sf /dev/stdout storage/logs/laravel.log
+
+tail -f storage/logs/*.log /var/log/nginx/*.log 2>/dev/null &
 
 wait $NGINX_PID
