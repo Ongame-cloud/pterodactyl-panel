@@ -11,13 +11,16 @@ if [ ! -f .env ]; then
 fi
 
 mkdir -p storage/logs storage/framework/sessions storage/framework/views storage/framework/cache/data bootstrap/cache
-chown -R nobody:nobody storage bootstrap/cache
+chown -R www-data:www-data storage bootstrap/cache
 chmod -R 777 storage bootstrap/cache
 
 if [ -z "$APP_KEY" ] || [ "$APP_KEY" = "" ]; then
     echo "Generating APP_KEY..."
     php artisan key:generate --force
 fi
+
+export CACHE_DRIVER=array
+export SESSION_DRIVER=file
 
 echo "Running migrations..."
 php artisan migrate --force --no-interaction 2>&1 || echo "Migration failed, continuing anyway..."
