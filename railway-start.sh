@@ -19,7 +19,7 @@ mkdir -p storage/logs storage/framework/sessions storage/framework/views storage
 chmod -R 777 storage bootstrap/cache
 
 echo "Running migrations..."
-php artisan migrate --force || echo "Migration skipped"
+php artisan migrate --force --no-interaction --isolated 2>&1 || echo "Migration skipped"
 
 echo "Clearing caches..."
 php artisan config:clear 2>/dev/null || true
@@ -143,6 +143,19 @@ NGINX_PID=$!
 
 echo "Services started. PHP-FPM PID: $PHP_FPM_PID, Nginx PID: $NGINX_PID"
 echo "Health check available at: /health.php"
+echo "Testing Laravel..."
+
+sleep 2
+
+curl -s http://127.0.0.1:$PORT/health.php || echo "Health check failed"
+curl -s http://127.0.0.1:$PORT/ > /tmp/test.html 2>&1 || echo "Laravel test failed"
+cat /tmp/test.html | head -20
+
+echo ""
+echo "=== Application is running ==="
 echo "Logs will appear below..."
+echo ""
+
+tail -f storage/logs/*.log &
 
 wait $NGINX_PID
