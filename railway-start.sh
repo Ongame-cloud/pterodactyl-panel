@@ -129,10 +129,20 @@ for i in 1 2 3 4 5; do
     sleep 1
 done
 
+echo "Creating health check..."
+cat > /app/public/health.php << 'HEALTHEOF'
+<?php
+echo "OK - PHP-FPM is working\n";
+echo "Time: " . date('Y-m-d H:i:s') . "\n";
+phpinfo(INFO_GENERAL);
+HEALTHEOF
+
 echo "Starting nginx on port $PORT..."
 nginx -c /etc/nginx/nginx.conf -g 'daemon off;' &
 NGINX_PID=$!
 
 echo "Services started. PHP-FPM PID: $PHP_FPM_PID, Nginx PID: $NGINX_PID"
+echo "Health check available at: /health.php"
+echo "Logs will appear below..."
 
 wait $NGINX_PID
