@@ -8,15 +8,15 @@ echo "Using port: $PORT"
 if [ ! -f .env ]; then
     echo "Creating .env file..."
     cp .env.example .env
-    
-    if [ -z "$APP_KEY" ]; then
-        echo "Generating APP_KEY..."
-        php artisan key:generate --force || true
-    fi
 fi
 
 mkdir -p storage/logs storage/framework/sessions storage/framework/views storage/framework/cache bootstrap/cache
 chmod -R 777 storage bootstrap/cache
+
+if [ -z "$APP_KEY" ] || [ "$APP_KEY" = "" ]; then
+    echo "Generating APP_KEY..."
+    php artisan key:generate --force
+fi
 
 echo "Running migrations..."
 php artisan migrate --force --no-interaction --isolated 2>&1 || echo "Migration skipped"
