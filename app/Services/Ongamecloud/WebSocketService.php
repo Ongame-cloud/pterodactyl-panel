@@ -31,11 +31,12 @@ class WebSocketService
         Log::info("OngameCloud WebSocket: New connection", ['connection_id' => $connectionId]);
     }
 
-    public function onMessage($client, string $data): void
+    }
+    public function onMessage($client, string &$data): void
     {
         $connectionId = (int)$client;
         
-        if (!$this->handshakes[$connectionId]) {
+        if (!isset($this->handshakes[$connectionId]) || !$this->handshakes[$connectionId]) {
             $this->performHandshake($client, $data, $connectionId);
             return;
         }
@@ -119,16 +120,20 @@ class WebSocketService
         Log::info("OngameCloud WebSocket: Connection closed", ['connection_id' => $connectionId]);
     }
 
-    private function performHandshake($client, string $data, int $connectionId): void
+
+    private function performHandshake($client, string &$data, int $connectionId): void
     {
+        if (!str_contains($data, "\r\n\r\n")) {
+            return;
+        }
+        
         preg_match('/Sec-WebSocket-Key: (.*)\r\n/', $data, $matches);
-        Log::info("OngameCloud WebSocket: Handshake data", ["connection_id" => $connectionId, "data" => substr($data, 0, 200)]);
         if (empty($matches[1])) {
             Log::error("OngameCloud WebSocket: Invalid handshake", ["connection_id" => $connectionId, "data_length" => strlen($data)]);
             return;
         }
         
-        $key = $matches[1];
+        $key = trim($matches[1]);
         $acceptKey = base64_encode(sha1($key . '258EAFA5-E914-47DA-95CA-C5AB0DC85B11', true));
         
         $response = "HTTP/1.1 101 Switching Protocols\r\n";
@@ -139,6 +144,9 @@ class WebSocketService
         fwrite($client, $response);
         $this->handshakes[$connectionId] = true;
         
+        $headerEnd = strpos($data, "\r\n\r\n") + 4;
+        $data = substr($data, $headerEnd);
+        
         $this->send($client, [
             'type' => 'connected',
             'message' => 'Connected to Ongamecloud WebSocket server',
@@ -146,7 +154,6 @@ class WebSocketService
             'timestamp' => now()->toIso8601String(),
         ]);
     }
-
     private function send($client, array $data): void
     {
         $payload = json_encode($data);

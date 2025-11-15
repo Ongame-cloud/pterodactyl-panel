@@ -33,9 +33,11 @@ class OngamecloudWebSocketServer extends Command
             return 1;
         }
 
+
         $this->info('WebSocket server started successfully');
         
         $clients = [];
+        $buffers = [];
         
         while (true) {
             $clients = array_filter($clients, fn($c) => is_resource($c) && !feof($c));
@@ -52,6 +54,7 @@ class OngamecloudWebSocketServer extends Command
                 $client = stream_socket_accept($socket, -1);
                 if ($client) {
                     $clients[] = $client;
+                    $buffers[(int)$client] = '';
                     $service->onConnect($client);
                 }
                 unset($read[array_search($socket, $read)]);
@@ -65,13 +68,15 @@ class OngamecloudWebSocketServer extends Command
                     if ($key !== false) {
                         unset($clients[$key]);
                     }
+                    unset($buffers[(int)$client]);
                     @fclose($client);
                 } else {
-                    $service->onMessage($client, $data);
+                    $clientId = (int)$client;
+                    $buffers[$clientId] .= $data;
+                    $service->onMessage($client, $buffers[$clientId]);
                 }
             }
         }
-
         return 0;
     }
 }
