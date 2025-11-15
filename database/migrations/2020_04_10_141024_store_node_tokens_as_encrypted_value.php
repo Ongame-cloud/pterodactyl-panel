@@ -17,45 +17,50 @@ class StoreNodeTokensAsEncryptedValue extends Migration
      */
     public function up(): void
     {
-        if (!Schema::hasColumn('nodes', 'uuid')) {
-            if (Schema::hasColumn('nodes', 'daemonSecret')) {
-                Schema::table('nodes', function (Blueprint $table) {
-                    $table->dropUnique(['daemonSecret']);
-                });
-            }
+        if (Schema::hasColumn('nodes', 'daemon_token')) {
+            return;
+        }
 
+        if (!Schema::hasColumn('nodes', 'uuid')) {
             Schema::table('nodes', function (Blueprint $table) {
                 $table->char('uuid', 36)->after('id');
                 $table->char('daemon_token_id', 16)->after('upload_size');
-
-                if (Schema::hasColumn('nodes', 'daemonSecret')) {
-                    $table->renameColumn('`daemonSecret`', 'daemon_token');
-                } else {
-                    $table->text('daemon_token')->after('upload_size');
-                }
+                $table->text('daemon_token')->after('upload_size');
             });
         }
 
-        Schema::table('nodes', function (Blueprint $table) {
-            $table->text('daemon_token')->change();
-        });
-
-        /** @var Encrypter $encrypter */
-        $encrypter = Container::getInstance()->make(Encrypter::class);
-
-        foreach (DB::select('SELECT id, daemon_token FROM nodes') as $datum) {
-            DB::update('UPDATE nodes SET uuid = ?, daemon_token_id = ?, daemon_token = ? WHERE id = ?', [
-                Uuid::uuid4()->toString(),
-                substr($datum->daemon_token, 0, 16),
-                $encrypter->encrypt(substr($datum->daemon_token, 16)),
-                $datum->id,
-            ]);
+        if (!Schema::hasColumn('nodes', 'daemon_token')) {
+            Schema::table('nodes', function (Blueprint $table) {
+                $table->text('daemon_token')->after('upload_size');
+            });
         }
 
-        Schema::table('nodes', function (Blueprint $table) {
-            $table->unique(['uuid']);
-            $table->unique(['daemon_token_id']);
-        });
+        $nodes = DB::select('SELECT id, daemon_token FROM nodes');
+        if (count($nodes) > 0) {
+            $encrypter = Container::getInstance()->make(Encrypter::class);
+            
+            foreach ($nodes as $datum) {
+                if (!empty($datum->daemon_token) && strlen($datum->daemon_token) > 16) {
+                    DB::update('UPDATE nodes SET uuid = ?, daemon_token_id = ?, daemon_token = ? WHERE id = ?', [
+                        Uuid::uuid4()->toString(),
+                        substr($datum->daemon_token, 0, 16),
+                        $encrypter->encrypt(substr($datum->daemon_token, 16)),
+                        $datum->id,
+                    ]);
+                }
+            }
+        }
+
+        if (!Schema::hasColumn('nodes', 'uuid') || DB::table('nodes')->whereNull('uuid')->count() === 0) {
+            Schema::table('nodes', function (Blueprint $table) {
+                if (!collect(DB::select("SHOW INDEXES FROM nodes WHERE Key_name = 'nodes_uuid_unique'"))->count()) {
+                    $table->unique(['uuid']);
+                }
+                if (!collect(DB::select("SHOW INDEXES FROM nodes WHERE Key_name = 'nodes_daemon_token_id_unique'"))->count()) {
+                    $table->unique(['daemon_token_id']);
+                }
+            });
+        }
     }
 
     /**
