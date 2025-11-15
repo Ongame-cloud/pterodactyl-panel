@@ -524,7 +524,11 @@ class WebSocketService
             ];
         }
         
-        $this->followedServers[$connectionId] = [
+        if (!isset($this->followedServers[$connectionId])) {
+            $this->followedServers[$connectionId] = [];
+        }
+        
+        $this->followedServers[$connectionId][$serverShortId] = [
             'client' => $client,
             'server' => $server,
             'last_update' => 0,
@@ -533,6 +537,7 @@ class WebSocketService
         Log::info("OngameCloud WebSocket: Following server", [
             'connection_id' => $connectionId,
             'server' => $serverShortId,
+            'total_followed' => count($this->followedServers[$connectionId]),
         ]);
         
         return [
@@ -544,16 +549,29 @@ class WebSocketService
 
     private function handleUnfollow(int $connectionId, array $data): array
     {
-        if (!isset($this->followedServers[$connectionId])) {
+        if (!isset($data['server_short_id'])) {
             return [
                 'success' => false,
-                'error' => 'Not following any server',
+                'error' => 'server_short_id is required',
                 'timestamp' => now()->toIso8601String(),
             ];
         }
         
-        $serverShortId = $this->followedServers[$connectionId]['server']->uuidShort;
-        unset($this->followedServers[$connectionId]);
+        $serverShortId = $data['server_short_id'];
+        
+        if (!isset($this->followedServers[$connectionId][$serverShortId])) {
+            return [
+                'success' => false,
+                'error' => 'Not following this server',
+                'timestamp' => now()->toIso8601String(),
+            ];
+        }
+        
+        unset($this->followedServers[$connectionId][$serverShortId]);
+        
+        if (empty($this->followedServers[$connectionId])) {
+            unset($this->followedServers[$connectionId]);
+        }
         
         Log::info("OngameCloud WebSocket: Unfollowed server", [
             'connection_id' => $connectionId,
@@ -571,32 +589,35 @@ class WebSocketService
     {
         $now = time();
         
-        foreach ($this->followedServers as $connectionId => $follow) {
-            if ($now - $follow['last_update'] < 1) {
-                continue;
-            }
-            
-            $this->followedServers[$connectionId]['last_update'] = $now;
-            
-            try {
-                $status = $this->serverRepository->setServer($follow['server'])->getDetails();
+        foreach ($this->followedServers as $connectionId => $servers) {
+            foreach ($servers as $serverShortId => $follow) {
+                if ($now - $follow['last_update'] < 1) {
+                    continue;
+                }
                 
-                $this->send($follow['client'], [
-                    'type' => 'resources',
-                    'server_short_id' => $follow['server']->uuidShort,
-                    'state' => $status['state'] ?? 'offline',
-                    'resources' => [
-                        'memory_bytes' => $status['utilization']['memory_bytes'] ?? 0,
-                        'cpu_absolute' => $status['utilization']['cpu_absolute'] ?? 0,
-                        'uptime' => $status['utilization']['uptime'] ?? 0,
-                    ],
-                    'timestamp' => now()->toIso8601String(),
-                ]);
-            } catch (Exception $e) {
-                Log::debug("OngameCloud WebSocket: Failed to get server resources", [
-                    'connection_id' => $connectionId,
-                    'error' => $e->getMessage(),
-                ]);
+                $this->followedServers[$connectionId][$serverShortId]['last_update'] = $now;
+                
+                try {
+                    $status = $this->serverRepository->setServer($follow['server'])->getDetails();
+                    
+                    $this->send($follow['client'], [
+                        'type' => 'resources',
+                        'server_short_id' => $follow['server']->uuidShort,
+                        'state' => $status['state'] ?? 'offline',
+                        'resources' => [
+                            'memory_bytes' => $status['utilization']['memory_bytes'] ?? 0,
+                            'cpu_absolute' => $status['utilization']['cpu_absolute'] ?? 0,
+                            'uptime' => $status['utilization']['uptime'] ?? 0,
+                        ],
+                        'timestamp' => now()->toIso8601String(),
+                    ]);
+                } catch (Exception $e) {
+                    Log::debug("OngameCloud WebSocket: Failed to get server resources", [
+                        'connection_id' => $connectionId,
+                        'server' => $serverShortId,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
         }
     }
