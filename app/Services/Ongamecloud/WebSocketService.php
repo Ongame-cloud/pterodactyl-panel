@@ -8,6 +8,13 @@ use Pterodactyl\Models\OngamecloudWebSocketLog;
 use Pterodactyl\Repositories\Wings\DaemonPowerRepository;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use React\Http\Message\Response;
+use React\Promise\Promise;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Message\ResponseInterface;
+use Ratchet\RFC6455\Messaging\Frame;
+use Ratchet\RFC6455\Messaging\MessageBuffer;
+use Ratchet\RFC6455\Messaging\CloseFrameChecker;
 
 class WebSocketService
 {
@@ -27,114 +34,95 @@ class WebSocketService
     ) {
     }
 
-    public function handleConnection($connection): void
+    public function handleUpgrade(ServerRequestInterface $request, ResponseInterface $psrResponse): Response
     {
-        $connectionId = spl_object_hash($connection);
-        $ipAddress = $connection->getRemoteAddress() ?? 'unknown';
-        
-        $this->addConnection($connectionId, $ipAddress);
-        
-        Log::info("OngameCloud WebSocket: New connection", [
-            'connection_id' => $connectionId,
-            'ip' => $ipAddress,
-        ]);
+        return new Response(
+            101,
+            array_merge($psrResponse->getHeaders(), [
+                'X-Powered-By' => 'Ongamecloud WebSocket Server',
+            ]),
+            '',
+            '1.1',
+            'Switching Protocols',
+            function ($connection) use ($request) {
+                $connectionId = spl_object_hash($connection);
+                $ipAddress = $request->getServerParams()['REMOTE_ADDR'] ?? 'unknown';
+                
+                $this->addConnection($connectionId, $ipAddress);
+                
+                Log::info("OngameCloud WebSocket: New connection", [
+                    'connection_id' => $connectionId,
+                    'ip' => $ipAddress,
+                ]);
 
-        $this->sendMessage($connection, [
-            'type' => 'connected',
-            'message' => 'Connected to Ongamecloud WebSocket server',
-            'connection_id' => $connectionId,
-            'timestamp' => now()->toIso8601String(),
-        ]);
+                $buffer = new MessageBuffer(
+                    new CloseFrameChecker(),
+                    function (Frame $frame) use ($connection, $connectionId, $ipAddress) {
+                        $this->handleFrame($frame, $connection, $connectionId, $ipAddress);
+                    },
+                    function (Frame $frame) use ($connection, $connectionId) {
+                        Log::warning("OngameCloud WebSocket: Control frame received", [
+                            'connection_id' => $connectionId,
+                            'opcode' => $frame->getOpcode(),
+                        ]);
+                        
+                        if ($frame->getOpcode() === Frame::OP_CLOSE) {
+                            $connection->end(Frame::create('', true, Frame::OP_CLOSE)->maskPayload()->getContents());
+                        } elseif ($frame->getOpcode() === Frame::OP_PING) {
+                            $connection->write(Frame::create($frame->getPayload(), true, Frame::OP_PONG)->maskPayload()->getContents());
+                        }
+                    },
+                    true
+                );
 
-        $connection->on('data', function ($data) use ($connection, $connectionId, $ipAddress) {
-            $decoded = $this->decodeFrame($data);
-            if ($decoded !== null) {
-                $this->handleData($connection, $connectionId, $decoded, $ipAddress);
+                $this->sendFrame($connection, [
+                    'type' => 'connected',
+                    'message' => 'Connected to Ongamecloud WebSocket server',
+                    'connection_id' => $connectionId,
+                    'timestamp' => now()->toIso8601String(),
+                ]);
+
+                $connection->on('data', function ($data) use ($buffer) {
+                    $buffer->onData($data);
+                });
+
+                $connection->on('close', function () use ($connectionId) {
+                    $this->removeConnection($connectionId);
+                    unset($this->authenticated[$connectionId]);
+                    
+                    Log::info("OngameCloud WebSocket: Connection closed", [
+                        'connection_id' => $connectionId,
+                    ]);
+                });
+
+                $connection->on('error', function (\Exception $e) use ($connectionId) {
+                    Log::error("OngameCloud WebSocket: Connection error", [
+                        'connection_id' => $connectionId,
+                        'error' => $e->getMessage(),
+                    ]);
+                });
             }
-        });
+        );
+    }
 
-        $connection->on('close', function () use ($connectionId) {
-            $this->removeConnection($connectionId);
-            unset($this->authenticated[$connectionId]);
-            
-            Log::info("OngameCloud WebSocket: Connection closed", [
-                'connection_id' => $connectionId,
-            ]);
-        });
-
-        $connection->on('error', function (\Exception $e) use ($connectionId) {
-            Log::error("OngameCloud WebSocket: Connection error", [
+    private function handleFrame(Frame $frame, $connection, string $connectionId, string $ipAddress): void
+    {
+        try {
+            $message = $frame->getPayload();
+            $this->handleData($connection, $connectionId, $message, $ipAddress);
+        } catch (\Exception $e) {
+            Log::error("OngameCloud WebSocket: Frame handling error", [
                 'connection_id' => $connectionId,
                 'error' => $e->getMessage(),
             ]);
-        });
+        }
     }
 
-    private function decodeFrame($data): ?string
-    {
-        if (strlen($data) < 2) {
-            return null;
-        }
-
-        $byte1 = ord($data[0]);
-        $byte2 = ord($data[1]);
-
-        $opcode = $byte1 & 0x0F;
-        $masked = ($byte2 & 0x80) !== 0;
-        $payloadLength = $byte2 & 0x7F;
-
-        $offset = 2;
-
-        if ($payloadLength === 126) {
-            if (strlen($data) < 4) return null;
-            $payloadLength = unpack('n', substr($data, 2, 2))[1];
-            $offset = 4;
-        } elseif ($payloadLength === 127) {
-            if (strlen($data) < 10) return null;
-            $payloadLength = unpack('J', substr($data, 2, 8))[1];
-            $offset = 10;
-        }
-
-        if ($masked) {
-            $maskingKey = substr($data, $offset, 4);
-            $offset += 4;
-        }
-
-        if (strlen($data) < $offset + $payloadLength) {
-            return null;
-        }
-
-        $payload = substr($data, $offset, $payloadLength);
-
-        if ($masked) {
-            for ($i = 0; $i < strlen($payload); $i++) {
-                $payload[$i] = $payload[$i] ^ $maskingKey[$i % 4];
-            }
-        }
-
-        return $payload;
-    }
-
-    private function encodeFrame($message): string
-    {
-        $length = strlen($message);
-        $frame = chr(0x81);
-
-        if ($length <= 125) {
-            $frame .= chr($length);
-        } elseif ($length <= 65535) {
-            $frame .= chr(126) . pack('n', $length);
-        } else {
-            $frame .= chr(127) . pack('J', $length);
-        }
-
-        return $frame . $message;
-    }
-
-    private function sendMessage($connection, array $data): void
+    private function sendFrame($connection, array $data): void
     {
         $json = json_encode($data);
-        $connection->write($this->encodeFrame($json));
+        $frame = Frame::create($json, true, Frame::OP_TEXT);
+        $connection->write($frame->getContents());
     }
 
     private function handleData($connection, string $connectionId, string $data, string $ipAddress): void
@@ -157,7 +145,7 @@ class WebSocketService
 
                 case 'action':
                     if (!isset($this->authenticated[$connectionId]) || !$this->authenticated[$connectionId]) {
-                        $this->sendMessage($connection, [
+                        $this->sendFrame($connection, [
                             'type' => 'error',
                             'error' => 'Not authenticated. Send auth message first.',
                             'timestamp' => now()->toIso8601String(),
@@ -167,14 +155,14 @@ class WebSocketService
                     
                     $this->incrementRequestCount($connectionId);
                     $response = $this->handleMessage($connectionId, $decoded, $ipAddress);
-                    $this->sendMessage($connection, [
+                    $this->sendFrame($connection, [
                         'type' => 'action_response',
                         ...$response,
                     ]);
                     break;
 
                 case 'ping':
-                    $this->sendMessage($connection, [
+                    $this->sendFrame($connection, [
                         'type' => 'pong',
                         'timestamp' => now()->toIso8601String(),
                     ]);
@@ -189,7 +177,7 @@ class WebSocketService
                 'error' => $e->getMessage(),
             ]);
 
-            $this->sendMessage($connection, [
+            $this->sendFrame($connection, [
                 'type' => 'error',
                 'error' => $e->getMessage(),
                 'timestamp' => now()->toIso8601String(),
