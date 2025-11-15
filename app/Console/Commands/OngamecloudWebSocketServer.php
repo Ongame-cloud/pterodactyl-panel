@@ -73,7 +73,9 @@ class OngamecloudWebSocketServer extends Command
                 } else {
                     $clientId = (int)$client;
                     $buffers[$clientId] .= $data;
-                    $service->onMessage($client, $buffers[$clientId]);
+                    $buffer = $buffers[$clientId];
+                    $service->onMessage($client, $buffer);
+                    $buffers[$clientId] = $buffer;
                 }
             }
         }

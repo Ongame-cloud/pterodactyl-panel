@@ -41,19 +41,23 @@ class WebSocketService
         }
         
         try {
-            $decoded = $this->decodeFrame($data);
-            if ($decoded === null) {
-                Log::warning("OngameCloud WebSocket: Failed to decode frame", [
+            $result = $this->decodeFrame($data);
+            if ($result === null) {
+                Log::debug("OngameCloud WebSocket: Incomplete frame, waiting for more data", [
                     'connection_id' => $connectionId,
-                    'data_length' => strlen($data),
-                    'first_bytes' => bin2hex(substr($data, 0, min(20, strlen($data))))
+                    'data_length' => strlen($data)
                 ]);
                 return;
             }
             
+            [$decoded, $frameSize] = $result;
+            $data = substr($data, $frameSize);
+            
             Log::debug("OngameCloud WebSocket: Frame decoded", [
                 'connection_id' => $connectionId,
-                'decoded' => $decoded
+                'decoded' => $decoded,
+                'frame_size' => $frameSize,
+                'remaining' => strlen($data)
             ]);
             
             $message = json_decode($decoded, true);
@@ -185,15 +189,20 @@ class WebSocketService
             "key_length" => strlen($key)
         ]);
         
-        $headerEnd = strpos($data, "\r\n\r\n") + 4;
-        $data = substr($data, $headerEnd);
-        
         $this->send($client, [
             'type' => 'connected',
             'message' => 'Connected to Ongamecloud WebSocket server',
             'connection_id' => $connectionId,
             'timestamp' => now()->toIso8601String(),
         ]);
+        
+        $headerEnd = strpos($data, "\r\n\r\n") + 4;
+        if ($headerEnd < strlen($data)) {
+            $remainingData = substr($data, $headerEnd);
+            if (!empty($remainingData)) {
+                $this->onMessage($client, $remainingData);
+            }
+        }
     }
     private function send($client, array $data): void
     {
@@ -218,7 +227,7 @@ class WebSocketService
         return $frame . $payload;
     }
 
-    private function decodeFrame(string $data): ?string
+    private function decodeFrame(string $data): ?array
     {
         if (strlen($data) < 2) {
             return null;
@@ -258,7 +267,8 @@ class WebSocketService
             }
         }
         
-        return $payload;
+        $frameSize = $offset + $length;
+        return [$payload, $frameSize];
     }
 
     private function handleAuth($client, int $connectionId, array $data): void
