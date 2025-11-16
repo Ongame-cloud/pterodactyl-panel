@@ -1072,23 +1072,6 @@ class WebSocketService
                     'connection_id' => $connectionId,
                     'server' => $serverShortId,
                 ]);
-                
-                $logsRequest = json_encode([
-                    'event' => 'send logs',
-                    'args' => [null],
-                ]);
-                @fwrite($socket, $this->encodeFrameForWings($logsRequest));
-                
-                $statsRequest = json_encode([
-                    'event' => 'send stats',
-                    'args' => [null],
-                ]);
-                @fwrite($socket, $this->encodeFrameForWings($statsRequest));
-                
-                Log::info("OngameCloud WebSocket: Requested logs and stats from Wings", [
-                    'connection_id' => $connectionId,
-                    'server' => $serverShortId,
-                ]);
             } elseif ($message['event'] === 'console output' && isset($message['args'][0])) {
                 $output = $message['args'][0];
                 
