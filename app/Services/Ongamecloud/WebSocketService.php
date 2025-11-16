@@ -821,6 +821,7 @@ class WebSocketService
                 'credentials' => $credentials,
                 'user_id' => $systemUser->id,
                 'token_length' => strlen($token),
+                'jwt_claims' => $jwtToken->claims()->all(),
             ]);
             
             $parsedUrl = parse_url($credentials);
