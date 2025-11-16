@@ -968,19 +968,7 @@ class WebSocketService
             $frame = $this->encodeFrame($authMessage);
             @fwrite($socket, $frame);
             
-            $conn['authenticated'] = true;
-            
-            Log::info("OngameCloud WebSocket: Wings authenticated", [
-                'connection_id' => $connectionId,
-                'server' => $serverShortId,
-            ]);
-            
-            $logsRequest = json_encode([
-                'event' => 'send logs',
-            ]);
-            @fwrite($socket, $this->encodeFrame($logsRequest));
-            
-            Log::info("OngameCloud WebSocket: Requested logs from Wings", [
+            Log::info("OngameCloud WebSocket: Sent auth to Wings", [
                 'connection_id' => $connectionId,
                 'server' => $serverShortId,
             ]);
@@ -1023,7 +1011,24 @@ class WebSocketService
                 'event' => $message['event'],
             ]);
             
-            if ($message['event'] === 'console output' && isset($message['args'][0])) {
+            if ($message['event'] === 'auth success') {
+                $conn['authenticated'] = true;
+                
+                Log::info("OngameCloud WebSocket: Wings authenticated", [
+                    'connection_id' => $connectionId,
+                    'server' => $serverShortId,
+                ]);
+                
+                $logsRequest = json_encode([
+                    'event' => 'send logs',
+                ]);
+                @fwrite($socket, $this->encodeFrame($logsRequest));
+                
+                Log::info("OngameCloud WebSocket: Requested logs from Wings", [
+                    'connection_id' => $connectionId,
+                    'server' => $serverShortId,
+                ]);
+            } elseif ($message['event'] === 'console output' && isset($message['args'][0])) {
                 $output = $message['args'][0];
                 
                 if (!isset($this->consoleHistory[$serverShortId])) {
