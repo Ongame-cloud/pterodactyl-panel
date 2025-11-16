@@ -80,7 +80,22 @@ const LoginContainer = ({ history }: RouteComponentProps) => {
                         <Field light type={'password'} label={'Password'} name={'password'} disabled={isSubmitting} />
                     </div>
                     <div css={tw`mt-6`}>
-                        <Button type={'submit'} size={'xlarge'} isLoading={isSubmitting} disabled={isSubmitting} css={tw`w-full`} style={{ backgroundColor: '#FF4F5E', color: 'white' }}>
+                        <Button 
+                            type={'submit'} 
+                            size={'xlarge'} 
+                            isLoading={isSubmitting} 
+                            disabled={isSubmitting} 
+                            css={tw`w-full`} 
+                            style={{ 
+                                backgroundColor: '#FF4F5E', 
+                                color: 'white', 
+                                border: 'none',
+                                padding: '12px',
+                                transition: 'background-color 0.15s'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#E6475A'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#FF4F5E'}
+                        >
                             Log in
                         </Button>
                     </div>

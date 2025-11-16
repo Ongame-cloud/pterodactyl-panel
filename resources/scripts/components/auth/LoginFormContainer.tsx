@@ -40,7 +40,7 @@ export default forwardRef<HTMLFormElement, Props>(({ title, ...props }, ref) => 
                         <img src={'https://dev.ogc.nz/img/svg/logo.svg'} css={tw`h-12`} alt="Logo" />
                     </div>
                     {title && <h2 css={tw`text-2xl text-center text-white font-semibold mb-2`}>{title}</h2>}
-                    <p css={tw`text-center text-sm mb-8`} style={{ color: '#d1d5db' }}>Welcome to Ongamecloud</p>
+                    <p css={tw`text-center text-sm mb-8`} style={{ color: '#d1d5db' }}>Ongamecloud Pterodactyl panel</p>
                     {props.children}
                 </div>
             </Form>
