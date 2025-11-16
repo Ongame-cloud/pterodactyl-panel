@@ -314,10 +314,10 @@ class WebSocketService
         fwrite($client, $frame);
     }
 
-    private function encodeFrame(string $payload): string
+    private function encodeFrame(string $payload, int $opcode = 0x1): string
     {
         $length = strlen($payload);
-        $frame = chr(0x81);
+        $frame = chr(0x80 | $opcode);
         
         if ($length <= 125) {
             $frame .= chr($length);
@@ -328,6 +328,30 @@ class WebSocketService
         }
         
         return $frame . $payload;
+    }
+
+    private function encodeFrameForWings(string $payload, int $opcode = 0x1): string
+    {
+        $length = strlen($payload);
+        $frame = chr(0x80 | $opcode);
+        
+        $mask = pack('N', rand());
+        
+        if ($length <= 125) {
+            $frame .= chr(0x80 | $length);
+        } elseif ($length <= 65535) {
+            $frame .= chr(0x80 | 126) . pack('n', $length);
+        } else {
+            $frame .= chr(0x80 | 127) . pack('J', $length);
+        }
+        
+        $frame .= $mask;
+        
+        for ($i = 0; $i < $length; $i++) {
+            $frame .= $payload[$i] ^ $mask[$i % 4];
+        }
+        
+        return $frame;
     }
 
     private function decodeFrame(string $data): ?array
@@ -1008,7 +1032,7 @@ class WebSocketService
                 'args' => [$conn['token']],
             ]);
             
-            $frame = $this->encodeFrame($authMessage);
+            $frame = $this->encodeFrameForWings($authMessage);
             @fwrite($socket, $frame);
             
             Log::info("OngameCloud WebSocket: Sent auth to Wings", [
@@ -1060,13 +1084,13 @@ class WebSocketService
                     'event' => 'send logs',
                     'args' => [null],
                 ]);
-                @fwrite($socket, $this->encodeFrame($logsRequest));
+                @fwrite($socket, $this->encodeFrameForWings($logsRequest));
                 
                 $statsRequest = json_encode([
                     'event' => 'send stats',
                     'args' => [null],
                 ]);
-                @fwrite($socket, $this->encodeFrame($statsRequest));
+                @fwrite($socket, $this->encodeFrameForWings($statsRequest));
                 
                 Log::info("OngameCloud WebSocket: Requested logs and stats from Wings", [
                     'connection_id' => $connectionId,
