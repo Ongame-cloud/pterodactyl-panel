@@ -1131,15 +1131,22 @@ class WebSocketService
                 $stats = $message['args'][0];
                 
                 if (isset($stats['logs']) && is_array($stats['logs'])) {
-                    if (!isset($this->consoleHistory[$serverShortId])) {
-                        $this->consoleHistory[$serverShortId] = [];
-                    }
-                    
                     foreach ($stats['logs'] as $logEntry) {
-                        $this->consoleHistory[$serverShortId][] = $logEntry;
-                        if (count($this->consoleHistory[$serverShortId]) > 50) {
-                            array_shift($this->consoleHistory[$serverShortId]);
+                        $processedLog = str_replace('Pterodactyl', 'Ongamecloud', $logEntry);
+                        
+                        if (strpos($processedLog, 'Ongamecloud Daemon') !== false) {
+                            $processedLog = "\x1b[1;35m" . $processedLog . "\x1b[0m";
+                        } elseif (strpos($processedLog, '[ERROR]') !== false || strpos($processedLog, '[FATAL]') !== false) {
+                            $processedLog = "\x1b[1;31m" . $processedLog . "\x1b[0m";
+                        } elseif (strpos($processedLog, '[WARN]') !== false || strpos($processedLog, '[WARNING]') !== false) {
+                            $processedLog = "\x1b[1;33m" . $processedLog . "\x1b[0m";
+                        } elseif (strpos($processedLog, '[DEBUG]') !== false) {
+                            $processedLog = "\x1b[1;90m" . $processedLog . "\x1b[0m";
+                        } elseif (strpos($processedLog, '[SUCCESS]') !== false || strpos($processedLog, '[OK]') !== false) {
+                            $processedLog = "\x1b[1;32m" . $processedLog . "\x1b[0m";
                         }
+                        
+                        $this->consoleLogService->saveLog($serverShortId, $processedLog);
                     }
                 }
             }

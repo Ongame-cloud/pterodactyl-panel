@@ -8,7 +8,7 @@ use Predis\Client as PredisClient;
 class ConsoleLogService
 {
     private const MAX_LOGS = 100;
-    private const LOG_EXPIRY = 86400;
+    private const LOG_EXPIRY = 2592000;
     
     private ?PredisClient $redis = null;
 
@@ -67,6 +67,12 @@ class ConsoleLogService
 
             $logKey = "server:{$serverShortId}:console_logs";
             $redis->del([$logKey]);
+            
+            $commandPattern = "server:{$serverShortId}:command:*";
+            $commandKeys = $redis->keys($commandPattern);
+            if (!empty($commandKeys)) {
+                $redis->del($commandKeys);
+            }
         } catch (\Exception $e) {
             Log::error("Failed to clear console logs in Redis", [
                 'server' => $serverShortId,
