@@ -804,7 +804,12 @@ class WebSocketService
                 ->setUser($systemUser)
                 ->setClaims([
                     'server_uuid' => $server->uuid,
-                    'permissions' => ['*'],
+                    'permissions' => [
+                        '*',
+                        'admin.websocket.errors',
+                        'admin.websocket.install',
+                        'admin.websocket.transfer',
+                    ],
                 ])
                 ->handle($server->node, $systemUser->id . $server->uuid);
             
