@@ -1001,10 +1001,27 @@ class WebSocketService
             [$payload, $frameSize] = $result;
             $conn['buffer'] = substr($conn['buffer'], $frameSize);
             
+            Log::debug("OngameCloud WebSocket: Wings frame decoded", [
+                'connection_id' => $connectionId,
+                'server' => $serverShortId,
+                'payload' => $payload,
+            ]);
+            
             $message = json_decode($payload, true);
             if (!is_array($message) || !isset($message['event'])) {
+                Log::warning("OngameCloud WebSocket: Invalid Wings message", [
+                    'connection_id' => $connectionId,
+                    'server' => $serverShortId,
+                    'payload' => $payload,
+                ]);
                 continue;
             }
+            
+            Log::info("OngameCloud WebSocket: Wings event received", [
+                'connection_id' => $connectionId,
+                'server' => $serverShortId,
+                'event' => $message['event'],
+            ]);
             
             if ($message['event'] === 'console output' && isset($message['args'][0])) {
                 $output = $message['args'][0];
