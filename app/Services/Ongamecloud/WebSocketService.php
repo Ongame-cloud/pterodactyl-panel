@@ -16,6 +16,7 @@ class WebSocketService
     private array $handshakes = [];
     private array $pendingConfirmations = [];
     private array $followedServers = [];
+    private array $wingsConnections = [];
 
     public function __construct(
         private DaemonPowerRepository $powerRepository,
@@ -179,6 +180,12 @@ class WebSocketService
         foreach (array_keys($this->pendingConfirmations) as $key) {
             if (str_starts_with($key, $connectionId . '_')) {
                 unset($this->pendingConfirmations[$key]);
+            }
+        }
+        
+        if (isset($this->followedServers[$connectionId])) {
+            foreach (array_keys($this->followedServers[$connectionId]) as $serverShortId) {
+                $this->disconnectFromWings($connectionId, $serverShortId);
             }
         }
         
@@ -545,6 +552,8 @@ class WebSocketService
             'last_update' => 0,
         ];
         
+        $this->connectToWings($connectionId, $serverShortId, $server);
+        
         Log::info("OngameCloud WebSocket: Following server", [
             'connection_id' => $connectionId,
             'server' => $serverShortId,
@@ -577,6 +586,8 @@ class WebSocketService
                 'timestamp' => now()->toIso8601String(),
             ];
         }
+        
+        $this->disconnectFromWings($connectionId, $serverShortId);
         
         unset($this->followedServers[$connectionId][$serverShortId]);
         
@@ -629,6 +640,180 @@ class WebSocketService
                         'error' => $e->getMessage(),
                     ]);
                 }
+                
+                $this->processWingsMessages($connectionId, $serverShortId);
+            }
+        }
+    }
+
+    private function connectToWings(int $connectionId, string $serverShortId, Server $server): void
+    {
+        try {
+            $credentials = $server->node->getConnectionAddress();
+            $token = $server->node->daemon_token_id . '.' . decrypt($server->node->daemon_token);
+            
+            $wsUrl = str_replace(['https://', 'http://'], 'wss://', $credentials) . '/api/servers/' . $server->uuid . '/ws';
+            
+            $context = stream_context_create([
+                'ssl' => [
+                    'verify_peer' => false,
+                    'verify_peer_name' => false,
+                ],
+            ]);
+            
+            $socket = @stream_socket_client($wsUrl, $errno, $errstr, 5, STREAM_CLIENT_CONNECT | STREAM_CLIENT_ASYNC_CONNECT, $context);
+            
+            if (!$socket) {
+                Log::error("OngameCloud WebSocket: Failed to connect to Wings", [
+                    'connection_id' => $connectionId,
+                    'server' => $serverShortId,
+                    'error' => $errstr,
+                ]);
+                return;
+            }
+            
+            stream_set_blocking($socket, false);
+            
+            $key = $connectionId . '_' . $serverShortId;
+            $this->wingsConnections[$key] = [
+                'socket' => $socket,
+                'server' => $server,
+                'token' => $token,
+                'authenticated' => false,
+                'handshake_done' => false,
+                'buffer' => '',
+                'client' => $this->followedServers[$connectionId][$serverShortId]['client'],
+            ];
+            
+            $this->performWingsHandshake($key, $wsUrl);
+            
+            Log::info("OngameCloud WebSocket: Connected to Wings", [
+                'connection_id' => $connectionId,
+                'server' => $serverShortId,
+            ]);
+        } catch (Exception $e) {
+            Log::error("OngameCloud WebSocket: Wings connection error", [
+                'connection_id' => $connectionId,
+                'server' => $serverShortId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function disconnectFromWings(int $connectionId, string $serverShortId): void
+    {
+        $key = $connectionId . '_' . $serverShortId;
+        
+        if (isset($this->wingsConnections[$key])) {
+            if (is_resource($this->wingsConnections[$key]['socket'])) {
+                @fclose($this->wingsConnections[$key]['socket']);
+            }
+            unset($this->wingsConnections[$key]);
+            
+            Log::info("OngameCloud WebSocket: Disconnected from Wings", [
+                'connection_id' => $connectionId,
+                'server' => $serverShortId,
+            ]);
+        }
+    }
+
+    private function performWingsHandshake(string $key, string $wsUrl): void
+    {
+        $conn = &$this->wingsConnections[$key];
+        $socket = $conn['socket'];
+        
+        $host = parse_url($wsUrl, PHP_URL_HOST);
+        $path = parse_url($wsUrl, PHP_URL_PATH);
+        $secKey = base64_encode(random_bytes(16));
+        
+        $request = "GET {$path} HTTP/1.1\r\n";
+        $request .= "Host: {$host}\r\n";
+        $request .= "Upgrade: websocket\r\n";
+        $request .= "Connection: Upgrade\r\n";
+        $request .= "Sec-WebSocket-Key: {$secKey}\r\n";
+        $request .= "Sec-WebSocket-Version: 13\r\n";
+        $request .= "\r\n";
+        
+        @fwrite($socket, $request);
+        $conn['handshake_done'] = true;
+    }
+
+    private function processWingsMessages(int $connectionId, string $serverShortId): void
+    {
+        $key = $connectionId . '_' . $serverShortId;
+        
+        if (!isset($this->wingsConnections[$key])) {
+            return;
+        }
+        
+        $conn = &$this->wingsConnections[$key];
+        $socket = $conn['socket'];
+        
+        if (!is_resource($socket) || feof($socket)) {
+            $this->disconnectFromWings($connectionId, $serverShortId);
+            return;
+        }
+        
+        $data = @fread($socket, 8192);
+        if ($data === false || $data === '') {
+            return;
+        }
+        
+        $conn['buffer'] .= $data;
+        
+        if (!$conn['authenticated'] && str_contains($conn['buffer'], "\r\n\r\n")) {
+            $headerEnd = strpos($conn['buffer'], "\r\n\r\n") + 4;
+            $conn['buffer'] = substr($conn['buffer'], $headerEnd);
+            
+            $authMessage = json_encode([
+                'event' => 'auth',
+                'args' => [$conn['token']],
+            ]);
+            
+            $frame = $this->encodeFrame($authMessage);
+            @fwrite($socket, $frame);
+            
+            $conn['authenticated'] = true;
+            
+            Log::info("OngameCloud WebSocket: Wings authenticated", [
+                'connection_id' => $connectionId,
+                'server' => $serverShortId,
+            ]);
+            
+            $logsRequest = json_encode([
+                'event' => 'send logs',
+                'args' => [null],
+            ]);
+            @fwrite($socket, $this->encodeFrame($logsRequest));
+            
+            return;
+        }
+        
+        if (!$conn['authenticated']) {
+            return;
+        }
+        
+        while (strlen($conn['buffer']) >= 2) {
+            $result = $this->decodeFrame($conn['buffer']);
+            if ($result === null) {
+                break;
+            }
+            
+            [$payload, $frameSize] = $result;
+            $conn['buffer'] = substr($conn['buffer'], $frameSize);
+            
+            $message = json_decode($payload, true);
+            if (!is_array($message) || !isset($message['event'])) {
+                continue;
+            }
+            
+            if ($message['event'] === 'console output' && isset($message['args'][0])) {
+                $this->send($conn['client'], [
+                    'type' => 'console_output',
+                    'server_short_id' => $serverShortId,
+                    'output' => $message['args'][0],
+                    'timestamp' => now()->toIso8601String(),
+                ]);
             }
         }
     }
