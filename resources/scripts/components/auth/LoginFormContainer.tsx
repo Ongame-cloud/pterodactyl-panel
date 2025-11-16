@@ -33,14 +33,14 @@ const Container = styled.div`
 export default forwardRef<HTMLFormElement, Props>(({ title, ...props }, ref) => (
     <Container>
         <div css={tw`w-full max-w-md`}>
-            <div css={tw`flex justify-center mb-8`}>
-                <img src={'https://dev.ogc.nz/img/svg/logo.svg'} css={tw`h-12`} alt="Logo" />
-            </div>
-            {title && <h2 css={tw`text-2xl text-center text-white font-semibold mb-2`}>{title}</h2>}
-            <p css={tw`text-center text-sm mb-8`} style={{ color: '#d1d5db' }}>Welcome to Ongamecloud</p>
             <FlashMessageRender css={tw`mb-4`} />
             <Form {...props} ref={ref}>
                 <div css={tw`rounded-lg p-8 shadow-xl`} style={{ backgroundColor: 'oklch(0.208 0.042 265.755)', border: '1px solid oklch(1 0 0 / 10%)' }}>
+                    <div css={tw`flex justify-center mb-6`}>
+                        <img src={'https://dev.ogc.nz/img/svg/logo.svg'} css={tw`h-12`} alt="Logo" />
+                    </div>
+                    {title && <h2 css={tw`text-2xl text-center text-white font-semibold mb-2`}>{title}</h2>}
+                    <p css={tw`text-center text-sm mb-8`} style={{ color: '#d1d5db' }}>Welcome to Ongamecloud</p>
                     {props.children}
                 </div>
             </Form>
