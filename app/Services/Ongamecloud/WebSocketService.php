@@ -788,6 +788,17 @@ class WebSocketService
                 return;
             }
             
+            $decryptedNodeToken = $server->node->getDecryptedKey();
+            
+            Log::info("OngameCloud WebSocket: Node token info", [
+                'connection_id' => $connectionId,
+                'server' => $serverShortId,
+                'node_id' => $server->node->id,
+                'token_id' => $server->node->daemon_token_id,
+                'decrypted_token_length' => strlen($decryptedNodeToken),
+                'decrypted_token_preview' => substr($decryptedNodeToken, 0, 10) . '...',
+            ]);
+            
             $jwtToken = $this->jwtService
                 ->setExpiresAt(CarbonImmutable::now()->addHours(1))
                 ->setUser($systemUser)
@@ -803,6 +814,8 @@ class WebSocketService
                 'connection_id' => $connectionId,
                 'server' => $serverShortId,
                 'credentials' => $credentials,
+                'user_id' => $systemUser->id,
+                'token_length' => strlen($token),
             ]);
             
             $parsedUrl = parse_url($credentials);
