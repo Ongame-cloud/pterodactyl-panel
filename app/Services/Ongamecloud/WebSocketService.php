@@ -26,7 +26,8 @@ class WebSocketService
     public function __construct(
         private DaemonPowerRepository $powerRepository,
         private DaemonServerRepository $serverRepository,
-        private NodeJWTService $jwtService
+        private NodeJWTService $jwtService,
+        private ConsoleLogService $consoleLogService
     ) {
     }
 
@@ -1075,8 +1076,19 @@ class WebSocketService
             } elseif ($message['event'] === 'console output' && isset($message['args'][0])) {
                 $output = $message['args'][0];
                 
-                $trimmedOutput = trim($output);
-                if (preg_match('/^>+\s*$/', $trimmedOutput) || preg_match('/^>\s*>\s*[a-z]$/', $trimmedOutput)) {
+                $cleanOutput = preg_replace('/\x1b\[(\d+)G/', '', $output);
+                $cleanOutput = preg_replace('/\x1b\[(\d+)K/', '', $cleanOutput);
+                $cleanOutput = preg_replace('/\x1b\[0G/', '', $cleanOutput);
+                $cleanOutput = preg_replace('/\x1b\[2K/', '', $cleanOutput);
+                $cleanOutput = preg_replace('/\x1b\[3G/', '', $cleanOutput);
+                
+                $trimmedOutput = trim($cleanOutput);
+                
+                if (preg_match('/^(>\s*)+[a-z]{0,10}$/i', $trimmedOutput)) {
+                    continue;
+                }
+                
+                if (preg_match('/^>+\s*$/', $trimmedOutput)) {
                     continue;
                 }
                 
@@ -1088,6 +1100,8 @@ class WebSocketService
                 if (count($this->consoleHistory[$serverShortId]) > 50) {
                     array_shift($this->consoleHistory[$serverShortId]);
                 }
+                
+                $this->consoleLogService->saveLog($serverShortId, $output);
                 
                 $connId = $conn['connection_id'];
                 if (isset($this->followedConsoles[$connId][$serverShortId])) {
