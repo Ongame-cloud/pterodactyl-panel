@@ -972,8 +972,6 @@ class WebSocketService
                 'connection_id' => $connectionId,
                 'server' => $serverShortId,
             ]);
-            
-            return;
         }
         
         while (strlen($conn['buffer']) >= 2) {
