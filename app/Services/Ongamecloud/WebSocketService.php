@@ -915,17 +915,6 @@ class WebSocketService
             
             $this->performWingsHandshake($key);
             
-            if (isset($this->consoleHistory[$serverShortId]) && !empty($this->consoleHistory[$serverShortId])) {
-                foreach ($this->consoleHistory[$serverShortId] as $output) {
-                    $this->send($client, [
-                        'type' => 'console_output',
-                        'server_short_id' => $serverShortId,
-                        'output' => $output,
-                        'timestamp' => now()->toIso8601String(),
-                    ]);
-                }
-            }
-            
             Log::info("OngameCloud WebSocket: Connected to Wings", [
                 'connection_id' => $connectionId,
                 'server' => $serverShortId,
