@@ -1015,10 +1015,17 @@ class WebSocketService
                 
                 $logsRequest = json_encode([
                     'event' => 'send logs',
+                    'args' => [null],
                 ]);
                 @fwrite($socket, $this->encodeFrame($logsRequest));
                 
-                Log::info("OngameCloud WebSocket: Requested logs from Wings", [
+                $statsRequest = json_encode([
+                    'event' => 'send stats',
+                    'args' => [null],
+                ]);
+                @fwrite($socket, $this->encodeFrame($statsRequest));
+                
+                Log::info("OngameCloud WebSocket: Requested logs and stats from Wings", [
                     'connection_id' => $connectionId,
                     'server' => $serverShortId,
                 ]);
@@ -1042,6 +1049,31 @@ class WebSocketService
                         'output' => $output,
                         'timestamp' => now()->toIso8601String(),
                     ]);
+                }
+            } elseif ($message['event'] === 'stats' && isset($message['args'][0])) {
+                $stats = $message['args'][0];
+                
+                if (isset($stats['logs']) && is_array($stats['logs'])) {
+                    foreach ($stats['logs'] as $logEntry) {
+                        if (!isset($this->consoleHistory[$serverShortId])) {
+                            $this->consoleHistory[$serverShortId] = [];
+                        }
+                        
+                        $this->consoleHistory[$serverShortId][] = $logEntry;
+                        if (count($this->consoleHistory[$serverShortId]) > 50) {
+                            array_shift($this->consoleHistory[$serverShortId]);
+                        }
+                        
+                        $connId = $conn['connection_id'];
+                        if (isset($this->followedConsoles[$connId][$serverShortId])) {
+                            $this->send($conn['client'], [
+                                'type' => 'console_output',
+                                'server_short_id' => $serverShortId,
+                                'output' => $logEntry,
+                                'timestamp' => now()->toIso8601String(),
+                            ]);
+                        }
+                    }
                 }
             }
         }
