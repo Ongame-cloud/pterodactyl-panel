@@ -977,7 +977,6 @@ class WebSocketService
             
             $logsRequest = json_encode([
                 'event' => 'send logs',
-                'args' => [null],
             ]);
             @fwrite($socket, $this->encodeFrame($logsRequest));
             
