@@ -779,10 +779,22 @@ class WebSocketService
             $credentials = $server->node->getConnectionAddress();
             $token = $server->node->daemon_token_id . '.' . decrypt($server->node->daemon_token);
             
+            Log::info("OngameCloud WebSocket: Attempting Wings connection", [
+                'connection_id' => $connectionId,
+                'server' => $serverShortId,
+                'credentials' => $credentials,
+            ]);
+            
             $parsedUrl = parse_url($credentials);
             $host = $parsedUrl['host'];
             $port = $parsedUrl['port'] ?? (($parsedUrl['scheme'] ?? 'https') === 'https' ? 443 : 80);
             $scheme = ($parsedUrl['scheme'] ?? 'https') === 'https' ? 'ssl' : 'tcp';
+            
+            Log::info("OngameCloud WebSocket: Parsed connection details", [
+                'host' => $host,
+                'port' => $port,
+                'scheme' => $scheme,
+            ]);
             
             $context = stream_context_create([
                 'ssl' => [
@@ -892,8 +904,19 @@ class WebSocketService
         $request .= "Sec-WebSocket-Version: 13\r\n";
         $request .= "\r\n";
         
-        @fwrite($socket, $request);
+        Log::info("OngameCloud WebSocket: Sending Wings handshake", [
+            'key' => $key,
+            'host' => $conn['host'],
+            'path' => $conn['path'],
+        ]);
+        
+        $written = @fwrite($socket, $request);
         $conn['handshake_done'] = true;
+        
+        Log::info("OngameCloud WebSocket: Wings handshake sent", [
+            'key' => $key,
+            'bytes_written' => $written,
+        ]);
     }
 
     private function processWingsMessages(int $connectionId, string $serverShortId): void
@@ -917,11 +940,25 @@ class WebSocketService
             return;
         }
         
+        Log::debug("OngameCloud WebSocket: Received Wings data", [
+            'connection_id' => $connectionId,
+            'server' => $serverShortId,
+            'data_length' => strlen($data),
+            'authenticated' => $conn['authenticated'],
+        ]);
+        
         $conn['buffer'] .= $data;
         
         if (!$conn['authenticated'] && str_contains($conn['buffer'], "\r\n\r\n")) {
             $headerEnd = strpos($conn['buffer'], "\r\n\r\n") + 4;
+            $headers = substr($conn['buffer'], 0, $headerEnd);
             $conn['buffer'] = substr($conn['buffer'], $headerEnd);
+            
+            Log::info("OngameCloud WebSocket: Wings handshake response received", [
+                'connection_id' => $connectionId,
+                'server' => $serverShortId,
+                'headers_length' => strlen($headers),
+            ]);
             
             $authMessage = json_encode([
                 'event' => 'auth',
@@ -943,6 +980,11 @@ class WebSocketService
                 'args' => [null],
             ]);
             @fwrite($socket, $this->encodeFrame($logsRequest));
+            
+            Log::info("OngameCloud WebSocket: Requested logs from Wings", [
+                'connection_id' => $connectionId,
+                'server' => $serverShortId,
+            ]);
             
             return;
         }
