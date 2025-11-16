@@ -4,6 +4,7 @@ namespace Pterodactyl\Services\Ongamecloud;
 
 use Exception;
 use Carbon\CarbonImmutable;
+use Pterodactyl\Models\User;
 use Pterodactyl\Models\Server;
 use Pterodactyl\Models\OngamecloudWebSocketLog;
 use Pterodactyl\Repositories\Wings\DaemonPowerRepository;
@@ -781,13 +782,20 @@ class WebSocketService
         try {
             $credentials = $server->node->getConnectionAddress();
             
+            $systemUser = User::where('root_admin', 1)->first();
+            if (!$systemUser) {
+                Log::error("OngameCloud WebSocket: No admin user found for Wings connection");
+                return;
+            }
+            
             $jwtToken = $this->jwtService
                 ->setExpiresAt(CarbonImmutable::now()->addHours(1))
+                ->setUser($systemUser)
                 ->setClaims([
                     'server_uuid' => $server->uuid,
-                    'permissions' => ['admin.websocket.console'],
+                    'permissions' => ['*'],
                 ])
-                ->handle($server->node, 'system_' . $server->uuid);
+                ->handle($server->node, $systemUser->id . $server->uuid);
             
             $token = $jwtToken->toString();
             
