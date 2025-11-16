@@ -35,9 +35,12 @@ class OngamecloudWebSocketServer extends Command
 
 
         $this->info('WebSocket server started successfully');
+        $this->info('Connecting all servers to Wings for log collection...');
+        $service->connectAllServersToWings();
         
         $clients = [];
         $buffers = [];
+        $lastServerCheck = time();
         
         while (true) {
             $clients = array_filter($clients, fn($c) => is_resource($c) && !feof($c));
@@ -49,11 +52,21 @@ class OngamecloudWebSocketServer extends Command
             if (stream_select($read, $write, $except, 0, 200000) < 1) {
                 $service->checkPendingConfirmations();
                 $service->updateFollowedServers();
+                
+                if (time() - $lastServerCheck > 60) {
+                    $service->connectAllServersToWings();
+                    $lastServerCheck = time();
+                }
                 continue;
             }
             
             $service->checkPendingConfirmations();
             $service->updateFollowedServers();
+            
+            if (time() - $lastServerCheck > 60) {
+                $service->connectAllServersToWings();
+                $lastServerCheck = time();
+            }
             
             if (in_array($socket, $read)) {
                 $client = stream_socket_accept($socket, -1);

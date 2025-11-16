@@ -22,6 +22,7 @@ class WebSocketService
     private array $followedConsoles = [];
     private array $wingsConnections = [];
     private array $consoleHistory = [];
+    private array $permanentWingsConnections = [];
 
     public function __construct(
         private DaemonPowerRepository $powerRepository,
@@ -804,6 +805,25 @@ class WebSocketService
                 $this->processWingsMessages($connectionId, $serverShortId);
             }
         }
+        
+        foreach ($this->permanentWingsConnections as $serverShortId => $conn) {
+            $this->processPermanentWingsMessages($serverShortId);
+        }
+    }
+    
+    public function connectAllServersToWings(): void
+    {
+        $servers = Server::all();
+        
+        foreach ($servers as $server) {
+            $serverShortId = $server->uuidShort;
+            
+            if (isset($this->permanentWingsConnections[$serverShortId])) {
+                continue;
+            }
+            
+            $this->connectPermanentWings($serverShortId, $server);
+        }
     }
 
     private function connectToWings(int $connectionId, string $serverShortId, Server $server): void
@@ -1128,6 +1148,206 @@ class WebSocketService
                     ]);
                 }
             } elseif ($message['event'] === 'stats' && isset($message['args'][0])) {
+            }
+        }
+    }
+    
+    private function connectPermanentWings(string $serverShortId, Server $server): void
+    {
+        try {
+            $credentials = $server->node->getConnectionAddress();
+            
+            $systemUser = User::where('root_admin', 1)->first();
+            if (!$systemUser) {
+                Log::error("OngameCloud WebSocket: No admin user found for permanent Wings connection");
+                return;
+            }
+            
+            $decryptedNodeToken = $server->node->getDecryptedKey();
+            
+            $jwtToken = $this->jwtService
+                ->setExpiresAt(CarbonImmutable::now()->addHours(1))
+                ->setUser($systemUser)
+                ->setClaims([
+                    'server_uuid' => $server->uuid,
+                    'permissions' => [
+                        '*',
+                        'admin.websocket.errors',
+                        'admin.websocket.install',
+                        'admin.websocket.transfer',
+                    ],
+                ])
+                ->handle($server->node, $systemUser->id . $server->uuid);
+            
+            $token = $jwtToken->toString();
+            
+            $parsedUrl = parse_url($credentials);
+            $host = $parsedUrl['host'];
+            $port = $parsedUrl['port'] ?? (($parsedUrl['scheme'] ?? 'https') === 'https' ? 443 : 80);
+            $scheme = ($parsedUrl['scheme'] ?? 'https') === 'https' ? 'ssl' : 'tcp';
+            
+            $context = stream_context_create([
+                'ssl' => [
+                    'verify_peer' => false,
+                    'verify_peer_name' => false,
+                ],
+            ]);
+            
+            $socket = @stream_socket_client("{$scheme}://{$host}:{$port}", $errno, $errstr, 10, STREAM_CLIENT_CONNECT, $context);
+            
+            if (!$socket) {
+                Log::error("OngameCloud WebSocket: Failed to connect permanent Wings", [
+                    'server' => $serverShortId,
+                    'host' => $host,
+                    'port' => $port,
+                    'error' => $errstr,
+                ]);
+                return;
+            }
+            
+            stream_set_blocking($socket, false);
+            
+            $this->permanentWingsConnections[$serverShortId] = [
+                'socket' => $socket,
+                'server' => $server,
+                'token' => $token,
+                'authenticated' => false,
+                'handshake_done' => false,
+                'buffer' => '',
+                'host' => $host,
+                'path' => '/api/servers/' . $server->uuid . '/ws',
+                'connected_at' => time(),
+            ];
+            
+            if (!isset($this->consoleHistory[$serverShortId])) {
+                $this->consoleHistory[$serverShortId] = [];
+            }
+            
+            $this->performPermanentWingsHandshake($serverShortId);
+            
+            Log::info("OngameCloud WebSocket: Connected permanent Wings", [
+                'server' => $serverShortId,
+            ]);
+        } catch (Exception $e) {
+            Log::error("OngameCloud WebSocket: Permanent Wings connection error", [
+                'server' => $serverShortId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+    
+    private function performPermanentWingsHandshake(string $serverShortId): void
+    {
+        $conn = &$this->permanentWingsConnections[$serverShortId];
+        $socket = $conn['socket'];
+        
+        $secKey = base64_encode(random_bytes(16));
+        
+        $origin = config('app.url');
+        
+        $request = "GET {$conn['path']} HTTP/1.1\r\n";
+        $request .= "Host: {$conn['host']}\r\n";
+        $request .= "Origin: {$origin}\r\n";
+        $request .= "Upgrade: websocket\r\n";
+        $request .= "Connection: Upgrade\r\n";
+        $request .= "Sec-WebSocket-Key: {$secKey}\r\n";
+        $request .= "Sec-WebSocket-Version: 13\r\n";
+        $request .= "\r\n";
+        
+        @fwrite($socket, $request);
+        $conn['handshake_done'] = true;
+    }
+    
+    private function processPermanentWingsMessages(string $serverShortId): void
+    {
+        if (!isset($this->permanentWingsConnections[$serverShortId])) {
+            return;
+        }
+        
+        $conn = &$this->permanentWingsConnections[$serverShortId];
+        $socket = $conn['socket'];
+        
+        if (!is_resource($socket) || feof($socket)) {
+            unset($this->permanentWingsConnections[$serverShortId]);
+            Log::info("OngameCloud WebSocket: Permanent Wings disconnected, will reconnect", [
+                'server' => $serverShortId,
+            ]);
+            return;
+        }
+        
+        $data = @fread($socket, 8192);
+        if ($data === false || $data === '') {
+            return;
+        }
+        
+        $conn['buffer'] .= $data;
+        
+        if (!$conn['authenticated'] && str_contains($conn['buffer'], "\r\n\r\n")) {
+            $headerEnd = strpos($conn['buffer'], "\r\n\r\n") + 4;
+            $conn['buffer'] = substr($conn['buffer'], $headerEnd);
+            
+            $authMessage = json_encode([
+                'event' => 'auth',
+                'args' => [$conn['token']],
+            ]);
+            
+            $frame = $this->encodeFrameForWings($authMessage);
+            @fwrite($socket, $frame);
+        }
+        
+        while (strlen($conn['buffer']) >= 2) {
+            $result = $this->decodeFrame($conn['buffer']);
+            if ($result === null) {
+                break;
+            }
+            
+            [$payload, $frameSize] = $result;
+            $conn['buffer'] = substr($conn['buffer'], $frameSize);
+            
+            $message = json_decode($payload, true);
+            if (!is_array($message) || !isset($message['event'])) {
+                continue;
+            }
+            
+            if ($message['event'] === 'auth success') {
+                $conn['authenticated'] = true;
+                Log::info("OngameCloud WebSocket: Permanent Wings authenticated", [
+                    'server' => $serverShortId,
+                ]);
+            } elseif ($message['event'] === 'console output' && isset($message['args'][0])) {
+                $output = $message['args'][0];
+                
+                $cleanOutput = preg_replace('/\x1b\[(\d+)G/', '', $output);
+                $cleanOutput = preg_replace('/\x1b\[(\d+)K/', '', $cleanOutput);
+                $cleanOutput = preg_replace('/\x1b\[0G/', '', $cleanOutput);
+                $cleanOutput = preg_replace('/\x1b\[2K/', '', $cleanOutput);
+                $cleanOutput = preg_replace('/\x1b\[3G/', '', $cleanOutput);
+                
+                $trimmedOutput = trim($cleanOutput);
+                
+                if (preg_match('/^(>\s*)+[a-z]{0,10}$/i', $trimmedOutput)) {
+                    continue;
+                }
+                
+                if (preg_match('/^>+\s*$/', $trimmedOutput)) {
+                    continue;
+                }
+                
+                $output = str_replace('Pterodactyl', 'Ongamecloud', $output);
+                
+                if (strpos($output, 'Ongamecloud Daemon') !== false) {
+                    $output = "\x1b[1;35m" . $output . "\x1b[0m";
+                } elseif (strpos($output, '[ERROR]') !== false || strpos($output, '[FATAL]') !== false) {
+                    $output = "\x1b[1;31m" . $output . "\x1b[0m";
+                } elseif (strpos($output, '[WARN]') !== false || strpos($output, '[WARNING]') !== false) {
+                    $output = "\x1b[1;33m" . $output . "\x1b[0m";
+                } elseif (strpos($output, '[DEBUG]') !== false) {
+                    $output = "\x1b[1;90m" . $output . "\x1b[0m";
+                } elseif (strpos($output, '[SUCCESS]') !== false || strpos($output, '[OK]') !== false) {
+                    $output = "\x1b[1;32m" . $output . "\x1b[0m";
+                }
+                
+                $this->consoleLogService->saveLog($serverShortId, $output);
             }
         }
     }

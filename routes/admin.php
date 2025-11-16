@@ -71,16 +71,13 @@ Route::group(['prefix' => 'settings'], function () {
     Route::get('/ongamecloud', [Admin\Settings\OngamecloudController::class, 'index'])->name('admin.settings.ongamecloud');
 
     Route::post('/mail/test', [Admin\Settings\MailController::class, 'test'])->name('admin.settings.mail.test');
-    Route::post('/ongamecloud/generate-token', [Admin\Settings\OngamecloudController::class, 'generateToken'])->name('admin.settings.ongamecloud.generate-token');
-    Route::post('/ongamecloud/clean-logs', [Admin\Settings\OngamecloudController::class, 'cleanLogs'])->name('admin.settings.ongamecloud.clean-logs');
 
-    Route::get('/ongamecloud/logs', [Admin\Settings\OngamecloudController::class, 'logs'])->name('admin.settings.ongamecloud.logs');
-    Route::get('/ongamecloud/stats', [Admin\Settings\OngamecloudController::class, 'stats'])->name('admin.settings.ongamecloud.stats');
+    Route::get('/ongamecloud/websocket-logs', [Admin\Settings\OngamecloudController::class, 'websocketLogs'])->name('admin.settings.ongamecloud.websocket-logs');
+    Route::get('/ongamecloud/redis-logs', [Admin\Settings\OngamecloudController::class, 'redisLogs'])->name('admin.settings.ongamecloud.redis-logs');
 
     Route::patch('/', [Admin\Settings\IndexController::class, 'update']);
     Route::patch('/mail', [Admin\Settings\MailController::class, 'update']);
     Route::patch('/advanced', [Admin\Settings\AdvancedController::class, 'update']);
-    Route::patch('/ongamecloud', [Admin\Settings\OngamecloudController::class, 'update']);
 });
 
 /*

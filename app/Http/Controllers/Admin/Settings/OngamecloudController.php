@@ -25,91 +25,65 @@ class OngamecloudController extends Controller
 
     public function index(): View
     {
-        return $this->view->make('admin.settings.ongamecloud', [
-            'enabled' => config('ongamecloud.websocket.enabled'),
-            'host' => config('ongamecloud.websocket.host'),
-            'port' => config('ongamecloud.websocket.port'),
-            'ssl' => config('ongamecloud.websocket.ssl'),
-            'auth_token' => config('ongamecloud.websocket.auth_token'),
-            'max_connections' => config('ongamecloud.websocket.max_connections'),
-            'timeout' => config('ongamecloud.websocket.timeout'),
-            'log_enabled' => config('ongamecloud.websocket.log_enabled'),
-            'log_retention_days' => config('ongamecloud.websocket.log_retention_days'),
-            'stats' => $this->websocketService->getStats(),
-            'connections' => $this->websocketService->getConnections(),
-        ]);
+        return $this->view->make('admin.settings.ongamecloud');
     }
 
-    public function update(Request $request): RedirectResponse
+    public function websocketLogs(): JsonResponse
     {
-        $validated = $request->validate([
-            'enabled' => 'boolean',
-            'host' => 'nullable|string',
-            'port' => 'nullable|integer|min:1|max:65535',
-            'ssl' => 'boolean',
-            'max_connections' => 'nullable|integer|min:1',
-            'timeout' => 'nullable|integer|min:1',
-            'log_enabled' => 'boolean',
-            'log_retention_days' => 'nullable|integer|min:1',
-        ]);
-
-        foreach ($validated as $key => $value) {
-            $this->settings->set('ongamecloud::websocket::' . $key, $value);
+        $logFile = storage_path('logs/laravel.log');
+        
+        if (!file_exists($logFile)) {
+            return response()->json(['logs' => 'No log file found']);
         }
-
-        $this->alert->success('Ongamecloud WebSocket settings updated successfully')->flash();
-
-        return redirect()->route('admin.settings.ongamecloud');
-    }
-
-    public function generateToken(): JsonResponse
-    {
-        $token = $this->websocketService->generateAuthToken();
-
+        
+        $lines = [];
+        $file = new \SplFileObject($logFile, 'r');
+        $file->seek(PHP_INT_MAX);
+        $lastLine = $file->key();
+        $startLine = max(0, $lastLine - 100);
+        
+        $file->seek($startLine);
+        while (!$file->eof()) {
+            $line = $file->current();
+            if (stripos($line, 'OngameCloud WebSocket') !== false || 
+                stripos($line, 'websocket') !== false) {
+                $lines[] = $line;
+            }
+            $file->next();
+        }
+        
         return response()->json([
-            'success' => true,
-            'token' => $token,
+            'logs' => implode('', array_slice($lines, -50))
         ]);
     }
 
-    public function logs(Request $request): JsonResponse
+    public function redisLogs(): JsonResponse
     {
-        $perPage = $request->input('per_page', 50);
-        $status = $request->input('status');
-        $action = $request->input('action');
-
-        $query = OngamecloudWebSocketLog::with('server')
-            ->orderBy('created_at', 'desc');
-
-        if ($status) {
-            $query->where('status', $status);
+        $logFile = storage_path('logs/laravel.log');
+        
+        if (!file_exists($logFile)) {
+            return response()->json(['logs' => 'No log file found']);
         }
-
-        if ($action) {
-            $query->where('action', $action);
+        
+        $lines = [];
+        $file = new \SplFileObject($logFile, 'r');
+        $file->seek(PHP_INT_MAX);
+        $lastLine = $file->key();
+        $startLine = max(0, $lastLine - 100);
+        
+        $file->seek($startLine);
+        while (!$file->eof()) {
+            $line = $file->current();
+            if (stripos($line, 'Redis') !== false || 
+                stripos($line, 'console log') !== false ||
+                stripos($line, 'saveLog') !== false) {
+                $lines[] = $line;
+            }
+            $file->next();
         }
-
-        $logs = $query->paginate($perPage);
-
-        return response()->json($logs);
-    }
-
-    public function cleanLogs(): JsonResponse
-    {
-        $deleted = $this->websocketService->cleanOldLogs();
-
+        
         return response()->json([
-            'success' => true,
-            'deleted' => $deleted,
-            'message' => "Deleted {$deleted} old log entries",
-        ]);
-    }
-
-    public function stats(): JsonResponse
-    {
-        return response()->json([
-            'stats' => $this->websocketService->getStats(),
-            'connections' => $this->websocketService->getConnections(),
+            'logs' => implode('', array_slice($lines, -50))
         ]);
     }
 }
