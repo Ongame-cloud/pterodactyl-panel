@@ -1092,6 +1092,11 @@ class WebSocketService
             } elseif ($message['event'] === 'console output' && isset($message['args'][0])) {
                 $output = $message['args'][0];
                 
+                $trimmedOutput = trim($output);
+                if (preg_match('/^>+\s*$/', $trimmedOutput) || preg_match('/^>\s*>\s*[a-z]$/', $trimmedOutput)) {
+                    continue;
+                }
+                
                 if (!isset($this->consoleHistory[$serverShortId])) {
                     $this->consoleHistory[$serverShortId] = [];
                 }
