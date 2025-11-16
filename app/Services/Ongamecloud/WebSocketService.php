@@ -3,10 +3,12 @@
 namespace Pterodactyl\Services\Ongamecloud;
 
 use Exception;
+use Carbon\CarbonImmutable;
 use Pterodactyl\Models\Server;
 use Pterodactyl\Models\OngamecloudWebSocketLog;
 use Pterodactyl\Repositories\Wings\DaemonPowerRepository;
 use Pterodactyl\Repositories\Wings\DaemonServerRepository;
+use Pterodactyl\Services\Nodes\NodeJWTService;
 use Illuminate\Support\Facades\Log;
 
 class WebSocketService
@@ -22,7 +24,8 @@ class WebSocketService
 
     public function __construct(
         private DaemonPowerRepository $powerRepository,
-        private DaemonServerRepository $serverRepository
+        private DaemonServerRepository $serverRepository,
+        private NodeJWTService $jwtService
     ) {
     }
 
@@ -777,7 +780,16 @@ class WebSocketService
     {
         try {
             $credentials = $server->node->getConnectionAddress();
-            $token = $server->node->daemon_token_id . '.' . decrypt($server->node->daemon_token);
+            
+            $jwtToken = $this->jwtService
+                ->setExpiresAt(CarbonImmutable::now()->addHours(1))
+                ->setClaims([
+                    'server_uuid' => $server->uuid,
+                    'permissions' => ['admin.websocket.console'],
+                ])
+                ->handle($server->node, 'system_' . $server->uuid);
+            
+            $token = $jwtToken->toString();
             
             Log::info("OngameCloud WebSocket: Attempting Wings connection", [
                 'connection_id' => $connectionId,
