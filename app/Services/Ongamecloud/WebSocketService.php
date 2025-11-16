@@ -309,9 +309,13 @@ class WebSocketService
     }
     private function send($client, array $data): void
     {
+        if (!is_resource($client) || feof($client)) {
+            return;
+        }
+        
         $payload = json_encode($data);
         $frame = $this->encodeFrame($payload);
-        fwrite($client, $frame);
+        @fwrite($client, $frame);
     }
 
     private function encodeFrame(string $payload, int $opcode = 0x1): string
