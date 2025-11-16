@@ -976,10 +976,6 @@ class WebSocketService
             return;
         }
         
-        if (!$conn['authenticated']) {
-            return;
-        }
-        
         while (strlen($conn['buffer']) >= 2) {
             $result = $this->decodeFrame($conn['buffer']);
             if ($result === null) {
