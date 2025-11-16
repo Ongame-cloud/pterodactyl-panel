@@ -1120,25 +1120,14 @@ class WebSocketService
                 $stats = $message['args'][0];
                 
                 if (isset($stats['logs']) && is_array($stats['logs'])) {
+                    if (!isset($this->consoleHistory[$serverShortId])) {
+                        $this->consoleHistory[$serverShortId] = [];
+                    }
+                    
                     foreach ($stats['logs'] as $logEntry) {
-                        if (!isset($this->consoleHistory[$serverShortId])) {
-                            $this->consoleHistory[$serverShortId] = [];
-                        }
-                        
                         $this->consoleHistory[$serverShortId][] = $logEntry;
                         if (count($this->consoleHistory[$serverShortId]) > 50) {
                             array_shift($this->consoleHistory[$serverShortId]);
-                        }
-                        
-                        $connId = $conn['connection_id'];
-                        if (isset($this->followedConsoles[$connId][$serverShortId])) {
-                            $client = $this->followedConsoles[$connId][$serverShortId]['client'];
-                            $this->send($client, [
-                                'type' => 'console_output',
-                                'server_short_id' => $serverShortId,
-                                'output' => $logEntry,
-                                'timestamp' => now()->toIso8601String(),
-                            ]);
                         }
                     }
                 }
