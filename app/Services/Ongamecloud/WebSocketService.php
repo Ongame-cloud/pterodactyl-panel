@@ -16,6 +16,7 @@ class WebSocketService
     private array $handshakes = [];
     private array $pendingConfirmations = [];
     private array $followedServers = [];
+    private array $followedConsoles = [];
     private array $wingsConnections = [];
     private array $consoleHistory = [];
 
@@ -157,6 +158,40 @@ class WebSocketService
                     ]);
                     break;
                     
+                case 'follow_console':
+                    if (!isset($this->authenticated[$connectionId])) {
+                        $this->send($client, [
+                            'type' => 'error',
+                            'error' => 'Not authenticated',
+                            'timestamp' => now()->toIso8601String(),
+                        ]);
+                        return;
+                    }
+                    
+                    $response = $this->handleFollowConsole($client, $connectionId, $message);
+                    $this->send($client, [
+                        'type' => 'follow_console_response',
+                        ...$response,
+                    ]);
+                    break;
+                    
+                case 'unfollow_console':
+                    if (!isset($this->authenticated[$connectionId])) {
+                        $this->send($client, [
+                            'type' => 'error',
+                            'error' => 'Not authenticated',
+                            'timestamp' => now()->toIso8601String(),
+                        ]);
+                        return;
+                    }
+                    
+                    $response = $this->handleUnfollowConsole($connectionId, $message);
+                    $this->send($client, [
+                        'type' => 'unfollow_console_response',
+                        ...$response,
+                    ]);
+                    break;
+                    
                 default:
                     throw new Exception('Unknown message type: ' . $message['type']);
             }
@@ -190,10 +225,17 @@ class WebSocketService
             }
         }
         
+        if (isset($this->followedConsoles[$connectionId])) {
+            foreach (array_keys($this->followedConsoles[$connectionId]) as $serverShortId) {
+                $this->disconnectFromWings($connectionId, $serverShortId);
+            }
+        }
+        
         unset($this->connections[$connectionId]);
         unset($this->authenticated[$connectionId]);
         unset($this->handshakes[$connectionId]);
         unset($this->followedServers[$connectionId]);
+        unset($this->followedConsoles[$connectionId]);
         
         Log::info("OngameCloud WebSocket: Connection closed", ['connection_id' => $connectionId]);
     }
@@ -553,8 +595,6 @@ class WebSocketService
             'last_update' => 0,
         ];
         
-        $this->connectToWings($connectionId, $serverShortId, $server);
-        
         Log::info("OngameCloud WebSocket: Following server", [
             'connection_id' => $connectionId,
             'server' => $serverShortId,
@@ -588,8 +628,6 @@ class WebSocketService
             ];
         }
         
-        $this->disconnectFromWings($connectionId, $serverShortId);
-        
         unset($this->followedServers[$connectionId][$serverShortId]);
         
         if (empty($this->followedServers[$connectionId])) {
@@ -597,6 +635,90 @@ class WebSocketService
         }
         
         Log::info("OngameCloud WebSocket: Unfollowed server", [
+            'connection_id' => $connectionId,
+            'server' => $serverShortId,
+        ]);
+        
+        return [
+            'success' => true,
+            'server_short_id' => $serverShortId,
+            'timestamp' => now()->toIso8601String(),
+        ];
+    }
+
+    private function handleFollowConsole($client, int $connectionId, array $data): array
+    {
+        if (!isset($data['server_short_id'])) {
+            return [
+                'success' => false,
+                'error' => 'server_short_id is required',
+                'timestamp' => now()->toIso8601String(),
+            ];
+        }
+        
+        $serverShortId = $data['server_short_id'];
+        $server = Server::where('uuidShort', $serverShortId)->first();
+        
+        if (!$server) {
+            return [
+                'success' => false,
+                'error' => 'Server not found',
+                'timestamp' => now()->toIso8601String(),
+            ];
+        }
+        
+        if (!isset($this->followedConsoles[$connectionId])) {
+            $this->followedConsoles[$connectionId] = [];
+        }
+        
+        $this->followedConsoles[$connectionId][$serverShortId] = [
+            'client' => $client,
+            'server' => $server,
+        ];
+        
+        $this->connectToWings($connectionId, $serverShortId, $server);
+        
+        Log::info("OngameCloud WebSocket: Following console", [
+            'connection_id' => $connectionId,
+            'server' => $serverShortId,
+        ]);
+        
+        return [
+            'success' => true,
+            'server_short_id' => $serverShortId,
+            'timestamp' => now()->toIso8601String(),
+        ];
+    }
+
+    private function handleUnfollowConsole(int $connectionId, array $data): array
+    {
+        if (!isset($data['server_short_id'])) {
+            return [
+                'success' => false,
+                'error' => 'server_short_id is required',
+                'timestamp' => now()->toIso8601String(),
+            ];
+        }
+        
+        $serverShortId = $data['server_short_id'];
+        
+        if (!isset($this->followedConsoles[$connectionId][$serverShortId])) {
+            return [
+                'success' => false,
+                'error' => 'Not following this console',
+                'timestamp' => now()->toIso8601String(),
+            ];
+        }
+        
+        $this->disconnectFromWings($connectionId, $serverShortId);
+        
+        unset($this->followedConsoles[$connectionId][$serverShortId]);
+        
+        if (empty($this->followedConsoles[$connectionId])) {
+            unset($this->followedConsoles[$connectionId]);
+        }
+        
+        Log::info("OngameCloud WebSocket: Unfollowed console", [
             'connection_id' => $connectionId,
             'server' => $serverShortId,
         ]);
@@ -641,7 +763,11 @@ class WebSocketService
                         'error' => $e->getMessage(),
                     ]);
                 }
-                
+            }
+        }
+        
+        foreach ($this->followedConsoles as $connectionId => $consoles) {
+            foreach ($consoles as $serverShortId => $follow) {
                 $this->processWingsMessages($connectionId, $serverShortId);
             }
         }
@@ -680,6 +806,16 @@ class WebSocketService
             
             stream_set_blocking($socket, false);
             
+            $client = $this->followedConsoles[$connectionId][$serverShortId]['client'] ?? null;
+            
+            if (!$client) {
+                Log::error("OngameCloud WebSocket: No client found for Wings connection", [
+                    'connection_id' => $connectionId,
+                    'server' => $serverShortId,
+                ]);
+                return;
+            }
+            
             $key = $connectionId . '_' . $serverShortId;
             $this->wingsConnections[$key] = [
                 'socket' => $socket,
@@ -688,9 +824,10 @@ class WebSocketService
                 'authenticated' => false,
                 'handshake_done' => false,
                 'buffer' => '',
-                'client' => $this->followedServers[$connectionId][$serverShortId]['client'],
+                'client' => $client,
                 'host' => $host,
                 'path' => '/api/servers/' . $server->uuid . '/ws',
+                'connection_id' => $connectionId,
             ];
             
             if (!isset($this->consoleHistory[$serverShortId])) {
@@ -701,7 +838,7 @@ class WebSocketService
             
             if (isset($this->consoleHistory[$serverShortId]) && !empty($this->consoleHistory[$serverShortId])) {
                 foreach ($this->consoleHistory[$serverShortId] as $output) {
-                    $this->send($this->followedServers[$connectionId][$serverShortId]['client'], [
+                    $this->send($client, [
                         'type' => 'console_output',
                         'server_short_id' => $serverShortId,
                         'output' => $output,
@@ -840,12 +977,15 @@ class WebSocketService
                     array_shift($this->consoleHistory[$serverShortId]);
                 }
                 
-                $this->send($conn['client'], [
-                    'type' => 'console_output',
-                    'server_short_id' => $serverShortId,
-                    'output' => $output,
-                    'timestamp' => now()->toIso8601String(),
-                ]);
+                $connId = $conn['connection_id'];
+                if (isset($this->followedConsoles[$connId][$serverShortId])) {
+                    $this->send($conn['client'], [
+                        'type' => 'console_output',
+                        'server_short_id' => $serverShortId,
+                        'output' => $output,
+                        'timestamp' => now()->toIso8601String(),
+                    ]);
+                }
             }
         }
     }
