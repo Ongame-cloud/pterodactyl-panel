@@ -1110,7 +1110,8 @@ class WebSocketService
                 
                 $connId = $conn['connection_id'];
                 if (isset($this->followedConsoles[$connId][$serverShortId])) {
-                    $this->send($conn['client'], [
+                    $client = $this->followedConsoles[$connId][$serverShortId]['client'];
+                    $this->send($client, [
                         'type' => 'console_output',
                         'server_short_id' => $serverShortId,
                         'output' => $output,
@@ -1133,7 +1134,8 @@ class WebSocketService
                         
                         $connId = $conn['connection_id'];
                         if (isset($this->followedConsoles[$connId][$serverShortId])) {
-                            $this->send($conn['client'], [
+                            $client = $this->followedConsoles[$connId][$serverShortId]['client'];
+                            $this->send($client, [
                                 'type' => 'console_output',
                                 'server_short_id' => $serverShortId,
                                 'output' => $logEntry,
