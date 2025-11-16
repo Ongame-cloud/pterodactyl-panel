@@ -803,7 +803,7 @@ class WebSocketService
                 ],
             ]);
             
-            $socket = @stream_socket_client("{$scheme}://{$host}:{$port}", $errno, $errstr, 5, STREAM_CLIENT_CONNECT | STREAM_CLIENT_ASYNC_CONNECT, $context);
+            $socket = @stream_socket_client("{$scheme}://{$host}:{$port}", $errno, $errstr, 10, STREAM_CLIENT_CONNECT, $context);
             
             if (!$socket) {
                 Log::error("OngameCloud WebSocket: Failed to connect to Wings", [
