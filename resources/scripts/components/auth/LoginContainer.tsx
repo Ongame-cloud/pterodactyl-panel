@@ -89,13 +89,13 @@ const LoginContainer = ({ history }: RouteComponentProps) => {
                                 border: 'none',
                                 padding: '0.75rem',
                                 fontSize: '0.875rem',
-                                fontWeight: '500',
+                                fontWeight: 500,
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.05em',
                                 borderRadius: '0.5rem',
                                 transition: 'background-color 0.15s',
                                 marginTop: '1.5rem'
-                            }}
+                            } as React.CSSProperties}
                             onMouseEnter={(e) => !isSubmitting && (e.currentTarget.style.backgroundColor = '#E6475A')}
                             onMouseLeave={(e) => !isSubmitting && (e.currentTarget.style.backgroundColor = '#FF4F5E')}
                         >
