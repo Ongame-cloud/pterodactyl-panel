@@ -17,6 +17,7 @@ class WebSocketService
     private array $pendingConfirmations = [];
     private array $followedServers = [];
     private array $wingsConnections = [];
+    private array $consoleHistory = [];
 
     public function __construct(
         private DaemonPowerRepository $powerRepository,
@@ -652,7 +653,10 @@ class WebSocketService
             $credentials = $server->node->getConnectionAddress();
             $token = $server->node->daemon_token_id . '.' . decrypt($server->node->daemon_token);
             
-            $wsUrl = str_replace(['https://', 'http://'], 'wss://', $credentials) . '/api/servers/' . $server->uuid . '/ws';
+            $parsedUrl = parse_url($credentials);
+            $host = $parsedUrl['host'];
+            $port = $parsedUrl['port'] ?? (($parsedUrl['scheme'] ?? 'https') === 'https' ? 443 : 80);
+            $scheme = ($parsedUrl['scheme'] ?? 'https') === 'https' ? 'ssl' : 'tcp';
             
             $context = stream_context_create([
                 'ssl' => [
@@ -661,12 +665,14 @@ class WebSocketService
                 ],
             ]);
             
-            $socket = @stream_socket_client($wsUrl, $errno, $errstr, 5, STREAM_CLIENT_CONNECT | STREAM_CLIENT_ASYNC_CONNECT, $context);
+            $socket = @stream_socket_client("{$scheme}://{$host}:{$port}", $errno, $errstr, 5, STREAM_CLIENT_CONNECT | STREAM_CLIENT_ASYNC_CONNECT, $context);
             
             if (!$socket) {
                 Log::error("OngameCloud WebSocket: Failed to connect to Wings", [
                     'connection_id' => $connectionId,
                     'server' => $serverShortId,
+                    'host' => $host,
+                    'port' => $port,
                     'error' => $errstr,
                 ]);
                 return;
@@ -683,9 +689,26 @@ class WebSocketService
                 'handshake_done' => false,
                 'buffer' => '',
                 'client' => $this->followedServers[$connectionId][$serverShortId]['client'],
+                'host' => $host,
+                'path' => '/api/servers/' . $server->uuid . '/ws',
             ];
             
-            $this->performWingsHandshake($key, $wsUrl);
+            if (!isset($this->consoleHistory[$serverShortId])) {
+                $this->consoleHistory[$serverShortId] = [];
+            }
+            
+            $this->performWingsHandshake($key);
+            
+            if (isset($this->consoleHistory[$serverShortId]) && !empty($this->consoleHistory[$serverShortId])) {
+                foreach ($this->consoleHistory[$serverShortId] as $output) {
+                    $this->send($this->followedServers[$connectionId][$serverShortId]['client'], [
+                        'type' => 'console_output',
+                        'server_short_id' => $serverShortId,
+                        'output' => $output,
+                        'timestamp' => now()->toIso8601String(),
+                    ]);
+                }
+            }
             
             Log::info("OngameCloud WebSocket: Connected to Wings", [
                 'connection_id' => $connectionId,
@@ -717,17 +740,15 @@ class WebSocketService
         }
     }
 
-    private function performWingsHandshake(string $key, string $wsUrl): void
+    private function performWingsHandshake(string $key): void
     {
         $conn = &$this->wingsConnections[$key];
         $socket = $conn['socket'];
         
-        $host = parse_url($wsUrl, PHP_URL_HOST);
-        $path = parse_url($wsUrl, PHP_URL_PATH);
         $secKey = base64_encode(random_bytes(16));
         
-        $request = "GET {$path} HTTP/1.1\r\n";
-        $request .= "Host: {$host}\r\n";
+        $request = "GET {$conn['path']} HTTP/1.1\r\n";
+        $request .= "Host: {$conn['host']}\r\n";
         $request .= "Upgrade: websocket\r\n";
         $request .= "Connection: Upgrade\r\n";
         $request .= "Sec-WebSocket-Key: {$secKey}\r\n";
@@ -808,10 +829,21 @@ class WebSocketService
             }
             
             if ($message['event'] === 'console output' && isset($message['args'][0])) {
+                $output = $message['args'][0];
+                
+                if (!isset($this->consoleHistory[$serverShortId])) {
+                    $this->consoleHistory[$serverShortId] = [];
+                }
+                
+                $this->consoleHistory[$serverShortId][] = $output;
+                if (count($this->consoleHistory[$serverShortId]) > 50) {
+                    array_shift($this->consoleHistory[$serverShortId]);
+                }
+                
                 $this->send($conn['client'], [
                     'type' => 'console_output',
                     'server_short_id' => $serverShortId,
-                    'output' => $message['args'][0],
+                    'output' => $output,
                     'timestamp' => now()->toIso8601String(),
                 ]);
             }
