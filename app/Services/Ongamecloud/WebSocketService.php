@@ -934,8 +934,11 @@ class WebSocketService
         
         $secKey = base64_encode(random_bytes(16));
         
+        $origin = config('app.url');
+        
         $request = "GET {$conn['path']} HTTP/1.1\r\n";
         $request .= "Host: {$conn['host']}\r\n";
+        $request .= "Origin: {$origin}\r\n";
         $request .= "Upgrade: websocket\r\n";
         $request .= "Connection: Upgrade\r\n";
         $request .= "Sec-WebSocket-Key: {$secKey}\r\n";
@@ -946,6 +949,7 @@ class WebSocketService
             'key' => $key,
             'host' => $conn['host'],
             'path' => $conn['path'],
+            'origin' => $origin,
         ]);
         
         $written = @fwrite($socket, $request);
