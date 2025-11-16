@@ -74,15 +74,12 @@ const LoginContainer = ({ history }: RouteComponentProps) => {
             })}
         >
             {({ isSubmitting, setSubmitting, submitForm }) => (
-                <LoginFormContainer title={'Log in'} css={tw`w-full flex`}>
-                    <Field light type={'text'} label={'Email'} name={'username'} disabled={isSubmitting} />
-                    <div css={tw`mt-6`}>
+                <LoginFormContainer title={'Log in'}>
+                    <div css={tw`space-y-4`}>
+                        <Field light type={'text'} label={'Email'} name={'username'} disabled={isSubmitting} />
                         <Field light type={'password'} label={'Password'} name={'password'} disabled={isSubmitting} />
-                    </div>
-                    <div css={tw`mt-6`}>
                         <Button 
                             type={'submit'} 
-                            size={'xlarge'} 
                             isLoading={isSubmitting} 
                             disabled={isSubmitting} 
                             css={tw`w-full`} 
@@ -90,11 +87,17 @@ const LoginContainer = ({ history }: RouteComponentProps) => {
                                 backgroundColor: '#FF4F5E', 
                                 color: 'white', 
                                 border: 'none',
-                                padding: '12px',
-                                transition: 'background-color 0.15s'
+                                padding: '0.75rem',
+                                fontSize: '0.875rem',
+                                fontWeight: '500',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.05em',
+                                borderRadius: '0.5rem',
+                                transition: 'background-color 0.15s',
+                                marginTop: '1.5rem'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#E6475A'}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#FF4F5E'}
+                            onMouseEnter={(e) => !isSubmitting && (e.currentTarget.style.backgroundColor = '#E6475A')}
+                            onMouseLeave={(e) => !isSubmitting && (e.currentTarget.style.backgroundColor = '#FF4F5E')}
                         >
                             Log in
                         </Button>
