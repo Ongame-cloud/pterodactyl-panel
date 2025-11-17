@@ -14,19 +14,24 @@ const Container = styled.div`
     justify-content: center;
     min-height: 100vh;
     height: 100vh;
+    width: 100vw;
     overflow: hidden;
-    background-color: oklch(0.1957 0 0);
+    background-color: #1a1a1a;
     padding: 1rem;
+    margin: 0;
+    position: fixed;
+    top: 0;
+    left: 0;
 `;
 
 const Card = styled.div`
-    background-color: oklch(0.208 0.042 265.755);
-    border: 1px solid oklch(1 0 0 / 10%);
+    background-color: #0d0d0d;
+    border: 1px solid rgba(255, 255, 255, 0.05);
     border-radius: 12px;
     padding: 3rem 2.5rem;
     width: 100%;
     max-width: 420px;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
 `;
 
 const Logo = styled.img`
