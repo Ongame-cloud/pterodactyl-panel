@@ -1135,7 +1135,9 @@ class WebSocketService
                     array_shift($this->consoleHistory[$serverShortId]);
                 }
                 
-                $this->consoleLogService->saveLog($serverShortId, $output);
+                if (!isset($this->permanentWingsConnections[$serverShortId])) {
+                    $this->consoleLogService->saveLog($serverShortId, $output);
+                }
                 
                 $connId = $conn['connection_id'];
                 if (isset($this->followedConsoles[$connId][$serverShortId])) {
