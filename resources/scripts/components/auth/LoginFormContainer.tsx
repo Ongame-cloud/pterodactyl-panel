@@ -25,8 +25,8 @@ const Container = styled.div`
 `;
 
 const Card = styled.div`
-    background-color: #0d0d0d;
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background-color: #111111;
+    border: 1px solid #3e3e3e;
     border-radius: 12px;
     padding: 3rem 2.5rem;
     width: 100%;

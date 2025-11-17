@@ -7,13 +7,24 @@ export interface Props {
 }
 
 const light = css<Props>`
-    ${tw`bg-white border-neutral-200 text-neutral-800`};
+    background-color: #1b1b1b;
+    border: 1px solid #3e3e3e;
+    color: #ffffff;
+    
     &:focus {
-        ${tw`border-primary-400`}
+        border-color: #3e3e3e;
+        box-shadow: none;
+        outline: none;
     }
 
     &:disabled {
-        ${tw`bg-neutral-100 border-neutral-200`};
+        background-color: #1b1b1b;
+        border-color: #3e3e3e;
+        opacity: 0.6;
+    }
+    
+    &:hover {
+        border-color: #3e3e3e;
     }
 `;
 
