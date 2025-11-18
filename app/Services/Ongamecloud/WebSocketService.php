@@ -23,6 +23,8 @@ class WebSocketService
     private array $wingsConnections = [];
     private array $consoleHistory = [];
     private array $permanentWingsConnections = [];
+    private array $consoleBatches = [];
+    private array $batchTimers = [];
 
     public function __construct(
         private DaemonPowerRepository $powerRepository,
@@ -1108,18 +1110,7 @@ class WebSocketService
                 }
                 
                 if (!isset($this->permanentWingsConnections[$serverShortId])) {
-                    $this->consoleLogService->saveLog($serverShortId, $output);
-                }
-                
-                $connId = $conn['connection_id'];
-                if (isset($this->followedConsoles[$connId][$serverShortId])) {
-                    $client = $this->followedConsoles[$connId][$serverShortId]['client'];
-                    $this->send($client, [
-                        'type' => 'console_output',
-                        'server_short_id' => $serverShortId,
-                        'output' => $output,
-                        'timestamp' => now()->toIso8601String(),
-                    ]);
+                    $this->addToConsoleBatch($serverShortId, $output, $conn['connection_id']);
                 }
             } elseif ($message['event'] === 'stats' && isset($message['args'][0])) {
             }
@@ -1293,8 +1284,107 @@ class WebSocketService
                 
                 $output = str_replace('Pterodactyl', 'Ongamecloud', $output);
                 
-                $this->consoleLogService->saveLog($serverShortId, $output);
+                $batchKey = $serverShortId . '_permanent';
+                
+                if (!isset($this->consoleBatches[$batchKey])) {
+                    $this->consoleBatches[$batchKey] = [
+                        'server_short_id' => $serverShortId,
+                        'outputs' => [],
+                        'is_permanent' => true,
+                    ];
+                }
+                
+                $this->consoleBatches[$batchKey]['outputs'][] = $output;
+                
+                if (isset($this->batchTimers[$batchKey])) {
+                    swoole_timer_clear($this->batchTimers[$batchKey]);
+                }
+                
+                $this->batchTimers[$batchKey] = swoole_timer_after(100, function() use ($batchKey, $serverShortId) {
+                    $this->flushPermanentBatch($batchKey, $serverShortId);
+                });
             }
+        }
+    }
+
+    private function addToConsoleBatch(string $serverShortId, string $output, int $connId): void
+    {
+        $batchKey = $serverShortId . '_' . $connId;
+        
+        if (!isset($this->consoleBatches[$batchKey])) {
+            $this->consoleBatches[$batchKey] = [
+                'server_short_id' => $serverShortId,
+                'conn_id' => $connId,
+                'outputs' => [],
+            ];
+        }
+        
+        $this->consoleBatches[$batchKey]['outputs'][] = $output;
+        
+        if (isset($this->batchTimers[$batchKey])) {
+            swoole_timer_clear($this->batchTimers[$batchKey]);
+        }
+        
+        $this->batchTimers[$batchKey] = swoole_timer_after(100, function() use ($batchKey, $serverShortId, $connId) {
+            $this->flushConsoleBatch($batchKey, $serverShortId, $connId);
+        });
+    }
+
+    private function flushConsoleBatch(string $batchKey, string $serverShortId, int $connId): void
+    {
+        if (!isset($this->consoleBatches[$batchKey])) {
+            return;
+        }
+        
+        $batch = $this->consoleBatches[$batchKey];
+        unset($this->consoleBatches[$batchKey]);
+        unset($this->batchTimers[$batchKey]);
+        
+        if (empty($batch['outputs'])) {
+            return;
+        }
+        
+        foreach ($batch['outputs'] as $output) {
+            $this->consoleLogService->saveLog($serverShortId, $output);
+        }
+        
+        if (isset($this->followedConsoles[$connId][$serverShortId])) {
+            $client = $this->followedConsoles[$connId][$serverShortId]['client'];
+            
+            if (count($batch['outputs']) === 1) {
+                $this->send($client, [
+                    'type' => 'console_output',
+                    'server_short_id' => $serverShortId,
+                    'output' => $batch['outputs'][0],
+                    'timestamp' => now()->toIso8601String(),
+                ]);
+            } else {
+                $this->send($client, [
+                    'type' => 'console_output_batch',
+                    'server_short_id' => $serverShortId,
+                    'outputs' => $batch['outputs'],
+                    'timestamp' => now()->toIso8601String(),
+                ]);
+            }
+        }
+    }
+
+    private function flushPermanentBatch(string $batchKey, string $serverShortId): void
+    {
+        if (!isset($this->consoleBatches[$batchKey])) {
+            return;
+        }
+        
+        $batch = $this->consoleBatches[$batchKey];
+        unset($this->consoleBatches[$batchKey]);
+        unset($this->batchTimers[$batchKey]);
+        
+        if (empty($batch['outputs'])) {
+            return;
+        }
+        
+        foreach ($batch['outputs'] as $output) {
+            $this->consoleLogService->saveLog($serverShortId, $output);
         }
     }
 }
