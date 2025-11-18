@@ -1096,35 +1096,7 @@ class WebSocketService
             } elseif ($message['event'] === 'console output' && isset($message['args'][0])) {
                 $output = $message['args'][0];
                 
-                $cleanOutput = preg_replace('/\x1b\[(\d+)G/', '', $output);
-                $cleanOutput = preg_replace('/\x1b\[(\d+)K/', '', $cleanOutput);
-                $cleanOutput = preg_replace('/\x1b\[0G/', '', $cleanOutput);
-                $cleanOutput = preg_replace('/\x1b\[2K/', '', $cleanOutput);
-                $cleanOutput = preg_replace('/\x1b\[3G/', '', $cleanOutput);
-                
-                $trimmedOutput = trim($cleanOutput);
-                
-                if (preg_match('/^(>\s*)+[a-z]{0,10}$/i', $trimmedOutput)) {
-                    continue;
-                }
-                
-                if (preg_match('/^>+\s*$/', $trimmedOutput)) {
-                    continue;
-                }
-                
                 $output = str_replace('Pterodactyl', 'Ongamecloud', $output);
-                
-                if (strpos($output, 'Ongamecloud Daemon') !== false) {
-                    $output = "\x1b[1;35m" . $output . "\x1b[0m";
-                } elseif (strpos($output, '[ERROR]') !== false || strpos($output, '[FATAL]') !== false) {
-                    $output = "\x1b[1;31m" . $output . "\x1b[0m";
-                } elseif (strpos($output, '[WARN]') !== false || strpos($output, '[WARNING]') !== false) {
-                    $output = "\x1b[1;33m" . $output . "\x1b[0m";
-                } elseif (strpos($output, '[DEBUG]') !== false) {
-                    $output = "\x1b[1;90m" . $output . "\x1b[0m";
-                } elseif (strpos($output, '[SUCCESS]') !== false || strpos($output, '[OK]') !== false) {
-                    $output = "\x1b[1;32m" . $output . "\x1b[0m";
-                }
                 
                 if (!isset($this->consoleHistory[$serverShortId])) {
                     $this->consoleHistory[$serverShortId] = [];
@@ -1319,35 +1291,7 @@ class WebSocketService
             } elseif ($message['event'] === 'console output' && isset($message['args'][0])) {
                 $output = $message['args'][0];
                 
-                $cleanOutput = preg_replace('/\x1b\[(\d+)G/', '', $output);
-                $cleanOutput = preg_replace('/\x1b\[(\d+)K/', '', $cleanOutput);
-                $cleanOutput = preg_replace('/\x1b\[0G/', '', $cleanOutput);
-                $cleanOutput = preg_replace('/\x1b\[2K/', '', $cleanOutput);
-                $cleanOutput = preg_replace('/\x1b\[3G/', '', $cleanOutput);
-                
-                $trimmedOutput = trim($cleanOutput);
-                
-                if (preg_match('/^(>\s*)+[a-z]{0,10}$/i', $trimmedOutput)) {
-                    continue;
-                }
-                
-                if (preg_match('/^>+\s*$/', $trimmedOutput)) {
-                    continue;
-                }
-                
                 $output = str_replace('Pterodactyl', 'Ongamecloud', $output);
-                
-                if (strpos($output, 'Ongamecloud Daemon') !== false) {
-                    $output = "\x1b[1;35m" . $output . "\x1b[0m";
-                } elseif (strpos($output, '[ERROR]') !== false || strpos($output, '[FATAL]') !== false) {
-                    $output = "\x1b[1;31m" . $output . "\x1b[0m";
-                } elseif (strpos($output, '[WARN]') !== false || strpos($output, '[WARNING]') !== false) {
-                    $output = "\x1b[1;33m" . $output . "\x1b[0m";
-                } elseif (strpos($output, '[DEBUG]') !== false) {
-                    $output = "\x1b[1;90m" . $output . "\x1b[0m";
-                } elseif (strpos($output, '[SUCCESS]') !== false || strpos($output, '[OK]') !== false) {
-                    $output = "\x1b[1;32m" . $output . "\x1b[0m";
-                }
                 
                 $this->consoleLogService->saveLog($serverShortId, $output);
             }
