@@ -8,7 +8,7 @@ use Predis\Client as PredisClient;
 class ConsoleLogService
 {
     private const MAX_LOGS = 100;
-    private const LOG_EXPIRY = 2592000;
+    private const LOG_EXPIRY = 432000;
     
     private ?PredisClient $redis = null;
 

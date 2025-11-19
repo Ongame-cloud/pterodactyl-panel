@@ -19,9 +19,6 @@ class WebSocketService
     private array $handshakes = [];
     private array $pendingConfirmations = [];
     private array $followedServers = [];
-    private array $followedConsoles = [];
-    private array $wingsConnections = [];
-    private array $consoleHistory = [];
     private array $permanentWingsConnections = [];
 
     public function __construct(
@@ -160,40 +157,6 @@ class WebSocketService
                     $response = $this->handleUnfollow($connectionId, $message);
                     $this->send($client, [
                         'type' => 'unfollow_response',
-                        ...$response,
-                    ]);
-                    break;
-                    
-                case 'follow_console':
-                    if (!isset($this->authenticated[$connectionId])) {
-                        $this->send($client, [
-                            'type' => 'error',
-                            'error' => 'Not authenticated',
-                            'timestamp' => now()->toIso8601String(),
-                        ]);
-                        return;
-                    }
-                    
-                    $response = $this->handleFollowConsole($client, $connectionId, $message);
-                    $this->send($client, [
-                        'type' => 'follow_console_response',
-                        ...$response,
-                    ]);
-                    break;
-                    
-                case 'unfollow_console':
-                    if (!isset($this->authenticated[$connectionId])) {
-                        $this->send($client, [
-                            'type' => 'error',
-                            'error' => 'Not authenticated',
-                            'timestamp' => now()->toIso8601String(),
-                        ]);
-                        return;
-                    }
-                    
-                    $response = $this->handleUnfollowConsole($connectionId, $message);
-                    $this->send($client, [
-                        'type' => 'unfollow_console_response',
                         ...$response,
                     ]);
                     break;
