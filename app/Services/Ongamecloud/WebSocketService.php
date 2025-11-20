@@ -20,6 +20,8 @@ class WebSocketService
     private array $pendingConfirmations = [];
     private array $followedServers = [];
     private array $permanentWingsConnections = [];
+    private array $wingsConnections = [];
+    private array $consoleHistory = [];
 
     public function __construct(
         private DaemonPowerRepository $powerRepository,
@@ -194,17 +196,10 @@ class WebSocketService
             }
         }
         
-        if (isset($this->followedConsoles[$connectionId])) {
-            foreach (array_keys($this->followedConsoles[$connectionId]) as $serverShortId) {
-                $this->disconnectFromWings($connectionId, $serverShortId);
-            }
-        }
-        
         unset($this->connections[$connectionId]);
         unset($this->authenticated[$connectionId]);
         unset($this->handshakes[$connectionId]);
         unset($this->followedServers[$connectionId]);
-        unset($this->followedConsoles[$connectionId]);
         
         Log::info("OngameCloud WebSocket: Connection closed", ['connection_id' => $connectionId]);
     }
@@ -643,89 +638,6 @@ class WebSocketService
         ];
     }
 
-    private function handleFollowConsole($client, int $connectionId, array $data): array
-    {
-        if (!isset($data['server_short_id'])) {
-            return [
-                'success' => false,
-                'error' => 'server_short_id is required',
-                'timestamp' => now()->toIso8601String(),
-            ];
-        }
-        
-        $serverShortId = $data['server_short_id'];
-        $server = Server::where('uuidShort', $serverShortId)->first();
-        
-        if (!$server) {
-            return [
-                'success' => false,
-                'error' => 'Server not found',
-                'timestamp' => now()->toIso8601String(),
-            ];
-        }
-        
-        if (!isset($this->followedConsoles[$connectionId])) {
-            $this->followedConsoles[$connectionId] = [];
-        }
-        
-        $this->followedConsoles[$connectionId][$serverShortId] = [
-            'client' => $client,
-            'server' => $server,
-        ];
-        
-        $this->connectToWings($connectionId, $serverShortId, $server);
-        
-        Log::info("OngameCloud WebSocket: Following console", [
-            'connection_id' => $connectionId,
-            'server' => $serverShortId,
-        ]);
-        
-        return [
-            'success' => true,
-            'server_short_id' => $serverShortId,
-            'timestamp' => now()->toIso8601String(),
-        ];
-    }
-
-    private function handleUnfollowConsole(int $connectionId, array $data): array
-    {
-        if (!isset($data['server_short_id'])) {
-            return [
-                'success' => false,
-                'error' => 'server_short_id is required',
-                'timestamp' => now()->toIso8601String(),
-            ];
-        }
-        
-        $serverShortId = $data['server_short_id'];
-        
-        if (!isset($this->followedConsoles[$connectionId][$serverShortId])) {
-            return [
-                'success' => false,
-                'error' => 'Not following this console',
-                'timestamp' => now()->toIso8601String(),
-            ];
-        }
-        
-        $this->disconnectFromWings($connectionId, $serverShortId);
-        
-        unset($this->followedConsoles[$connectionId][$serverShortId]);
-        
-        if (empty($this->followedConsoles[$connectionId])) {
-            unset($this->followedConsoles[$connectionId]);
-        }
-        
-        Log::info("OngameCloud WebSocket: Unfollowed console", [
-            'connection_id' => $connectionId,
-            'server' => $serverShortId,
-        ]);
-        
-        return [
-            'success' => true,
-            'server_short_id' => $serverShortId,
-            'timestamp' => now()->toIso8601String(),
-        ];
-    }
 
     public function updateFollowedServers(): void
     {
@@ -763,11 +675,6 @@ class WebSocketService
             }
         }
         
-        foreach ($this->followedConsoles as $connectionId => $consoles) {
-            foreach ($consoles as $serverShortId => $follow) {
-                $this->processWingsMessages($connectionId, $serverShortId);
-            }
-        }
         
         foreach ($this->permanentWingsConnections as $serverShortId => $conn) {
             $this->processPermanentWingsMessages($serverShortId);
@@ -869,15 +776,6 @@ class WebSocketService
             
             stream_set_blocking($socket, false);
             
-            $client = $this->followedConsoles[$connectionId][$serverShortId]['client'] ?? null;
-            
-            if (!$client) {
-                Log::error("OngameCloud WebSocket: No client found for Wings connection", [
-                    'connection_id' => $connectionId,
-                    'server' => $serverShortId,
-                ]);
-                return;
-            }
             
             $key = $connectionId . '_' . $serverShortId;
             $this->wingsConnections[$key] = [
@@ -887,7 +785,6 @@ class WebSocketService
                 'authenticated' => false,
                 'handshake_done' => false,
                 'buffer' => '',
-                'client' => $client,
                 'host' => $host,
                 'path' => '/api/servers/' . $server->uuid . '/ws',
                 'connection_id' => $connectionId,
@@ -1074,16 +971,6 @@ class WebSocketService
                     $this->consoleLogService->saveLog($serverShortId, $output);
                 }
                 
-                $connId = $conn['connection_id'];
-                if (isset($this->followedConsoles[$connId][$serverShortId])) {
-                    $client = $this->followedConsoles[$connId][$serverShortId]['client'];
-                    $this->send($client, [
-                        'type' => 'console_output',
-                        'server_short_id' => $serverShortId,
-                        'output' => $output,
-                        'timestamp' => now()->toIso8601String(),
-                    ]);
-                }
             } elseif ($message['event'] === 'stats' && isset($message['args'][0])) {
             }
         }
