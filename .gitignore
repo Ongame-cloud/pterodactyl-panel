@@ -9,7 +9,6 @@ storage/framework/*
 /.idea
 /nbproject
 /.direnv
-
 node_modules
 *.log
 _ide_helper.php
@@ -35,4 +34,3 @@ resources/lang/locales.js
 /public/build
 /public/hot
 result
-.env.ci
