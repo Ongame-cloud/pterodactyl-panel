@@ -5,8 +5,10 @@
 FROM --platform=$TARGETOS/$TARGETARCH mhart/alpine-node:14
 WORKDIR /app
 COPY . ./
-RUN yarn install --frozen-lockfile \
-    && yarn run build:production
+RUN yarn install --frozen-lockfile --network-timeout 100000 || \
+    yarn install --frozen-lockfile --network-timeout 100000 || \
+    yarn install --frozen-lockfile --network-timeout 100000
+RUN yarn run build:production
 
 # Stage 1:
 # Build the actual container with all of the needed PHP dependencies that will run the application.
