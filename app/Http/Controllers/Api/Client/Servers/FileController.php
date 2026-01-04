@@ -296,13 +296,8 @@ class FileController extends ClientApiController
                                 }
                             }
                         } elseif (!$isFile && !$isSymlink) {
-                            if ($path === '/' && in_array($item['name'], ['config', 'plugins'])) {
-                                \Log::info('[CONFIG] Scanning subdirectory: ' . $fullPath);
-                                $scanDirectory($fullPath);
-                            } elseif (str_starts_with($path, '/config') || str_starts_with($path, '/plugins')) {
-                                \Log::info('[CONFIG] Scanning nested subdirectory: ' . $fullPath);
-                                $scanDirectory($fullPath);
-                            }
+                            \Log::info('[CONFIG] Scanning subdirectory: ' . $fullPath);
+                            $scanDirectory($fullPath);
                         }
                     }
                 } catch (\Exception $e) {
