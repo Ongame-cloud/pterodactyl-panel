@@ -262,4 +262,42 @@ class FileController extends ClientApiController
 
         return new JsonResponse([], Response::HTTP_NO_CONTENT);
     }
+
+    public function listConfigFiles(ListFilesRequest $request, Server $server): JsonResponse
+    {
+        $configExtensions = ['.properties', '.yml', '.yaml', '.json', '.toml', '.ini', '.conf', '.txt'];
+        $configFiles = [];
+        
+        $scanDirectory = function($path) use (&$scanDirectory, &$configFiles, $configExtensions, $server) {
+            try {
+                $contents = $this->fileRepository
+                    ->setServer($server)
+                    ->getDirectory($path);
+                
+                foreach ($contents as $item) {
+                    $fullPath = $path === '/' ? $item->name : rtrim($path, '/') . '/' . $item->name;
+                    
+                    if ($item->is_file) {
+                        foreach ($configExtensions as $ext) {
+                            if (str_ends_with(strtolower($item->name), $ext)) {
+                                $configFiles[] = ltrim($fullPath, '/');
+                                break;
+                            }
+                        }
+                    } elseif ($item->is_directory) {
+                        if ($path === '/' && in_array($item->name, ['config', 'plugins'])) {
+                            $scanDirectory($fullPath);
+                        } elseif (str_starts_with($path, '/config') || str_starts_with($path, '/plugins')) {
+                            $scanDirectory($fullPath);
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+            }
+        };
+        
+        $scanDirectory('/');
+        
+        return new JsonResponse($configFiles);
+    }
 }
