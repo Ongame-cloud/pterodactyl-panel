@@ -283,18 +283,18 @@ class FileController extends ClientApiController
                     \Log::info('[CONFIG] Found ' . count($contents) . ' items in ' . $path);
                     
                     foreach ($contents as $item) {
-                        $fullPath = $path === '/' ? $item->name : rtrim($path, '/') . '/' . $item->name;
+                        $fullPath = $path === '/' ? $item['name'] : rtrim($path, '/') . '/' . $item['name'];
                         
-                        if ($item->is_file) {
+                        if ($item['is_file']) {
                             foreach ($configExtensions as $ext) {
-                                if (str_ends_with(strtolower($item->name), $ext)) {
+                                if (str_ends_with(strtolower($item['name']), $ext)) {
                                     \Log::info('[CONFIG] Found config file: ' . $fullPath);
                                     $configFiles[] = ltrim($fullPath, '/');
                                     break;
                                 }
                             }
-                        } elseif ($item->is_directory) {
-                            if ($path === '/' && in_array($item->name, ['config', 'plugins'])) {
+                        } elseif ($item['is_directory']) {
+                            if ($path === '/' && in_array($item['name'], ['config', 'plugins'])) {
                                 \Log::info('[CONFIG] Scanning subdirectory: ' . $fullPath);
                                 $scanDirectory($fullPath);
                             } elseif (str_starts_with($path, '/config') || str_starts_with($path, '/plugins')) {
