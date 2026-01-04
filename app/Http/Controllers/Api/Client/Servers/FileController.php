@@ -270,12 +270,18 @@ class FileController extends ClientApiController
             
             $configExtensions = ['.properties', '.yml', '.yaml', '.json', '.toml', '.ini', '.conf', '.txt'];
             $configFiles = [];
+            $maxDepth = 3;
             
             \Log::info('[CONFIG] About to define scanDirectory closure');
             
-            $scanDirectory = function($path) use (&$scanDirectory, &$configFiles, $configExtensions, $server) {
+            $scanDirectory = function($path, $depth = 0) use (&$scanDirectory, &$configFiles, $configExtensions, $server, $maxDepth) {
+                if ($depth > $maxDepth) {
+                    \Log::info('[CONFIG] Max depth reached for: ' . $path);
+                    return;
+                }
+                
                 try {
-                    \Log::info('[CONFIG] Scanning directory: ' . $path);
+                    \Log::info('[CONFIG] Scanning directory: ' . $path . ' (depth: ' . $depth . ')');
                     $contents = $this->fileRepository
                         ->setServer($server)
                         ->getDirectory($path);
@@ -297,7 +303,7 @@ class FileController extends ClientApiController
                             }
                         } elseif (!$isFile && !$isSymlink) {
                             \Log::info('[CONFIG] Scanning subdirectory: ' . $fullPath);
-                            $scanDirectory($fullPath);
+                            $scanDirectory($fullPath, $depth + 1);
                         }
                     }
                 } catch (\Exception $e) {
@@ -307,7 +313,7 @@ class FileController extends ClientApiController
             };
             
             \Log::info('[CONFIG] About to call scanDirectory for root');
-            $scanDirectory('/');
+            $scanDirectory('/', 0);
             
             \Log::info('[CONFIG] Total config files found: ' . count($configFiles));
             
