@@ -265,50 +265,60 @@ class FileController extends ClientApiController
 
     public function listConfigFiles(ListFilesRequest $request, Server $server): JsonResponse
     {
-        \Log::info('[CONFIG] listConfigFiles called for server: ' . $server->uuid);
-        
-        $configExtensions = ['.properties', '.yml', '.yaml', '.json', '.toml', '.ini', '.conf', '.txt'];
-        $configFiles = [];
-        
-        $scanDirectory = function($path) use (&$scanDirectory, &$configFiles, $configExtensions, $server) {
-            try {
-                \Log::info('[CONFIG] Scanning directory: ' . $path);
-                $contents = $this->fileRepository
-                    ->setServer($server)
-                    ->getDirectory($path);
-                
-                \Log::info('[CONFIG] Found ' . count($contents) . ' items in ' . $path);
-                
-                foreach ($contents as $item) {
-                    $fullPath = $path === '/' ? $item->name : rtrim($path, '/') . '/' . $item->name;
+        try {
+            \Log::info('[CONFIG] listConfigFiles called for server: ' . $server->uuid);
+            
+            $configExtensions = ['.properties', '.yml', '.yaml', '.json', '.toml', '.ini', '.conf', '.txt'];
+            $configFiles = [];
+            
+            \Log::info('[CONFIG] About to define scanDirectory closure');
+            
+            $scanDirectory = function($path) use (&$scanDirectory, &$configFiles, $configExtensions, $server) {
+                try {
+                    \Log::info('[CONFIG] Scanning directory: ' . $path);
+                    $contents = $this->fileRepository
+                        ->setServer($server)
+                        ->getDirectory($path);
                     
-                    if ($item->is_file) {
-                        foreach ($configExtensions as $ext) {
-                            if (str_ends_with(strtolower($item->name), $ext)) {
-                                \Log::info('[CONFIG] Found config file: ' . $fullPath);
-                                $configFiles[] = ltrim($fullPath, '/');
-                                break;
+                    \Log::info('[CONFIG] Found ' . count($contents) . ' items in ' . $path);
+                    
+                    foreach ($contents as $item) {
+                        $fullPath = $path === '/' ? $item->name : rtrim($path, '/') . '/' . $item->name;
+                        
+                        if ($item->is_file) {
+                            foreach ($configExtensions as $ext) {
+                                if (str_ends_with(strtolower($item->name), $ext)) {
+                                    \Log::info('[CONFIG] Found config file: ' . $fullPath);
+                                    $configFiles[] = ltrim($fullPath, '/');
+                                    break;
+                                }
+                            }
+                        } elseif ($item->is_directory) {
+                            if ($path === '/' && in_array($item->name, ['config', 'plugins'])) {
+                                \Log::info('[CONFIG] Scanning subdirectory: ' . $fullPath);
+                                $scanDirectory($fullPath);
+                            } elseif (str_starts_with($path, '/config') || str_starts_with($path, '/plugins')) {
+                                \Log::info('[CONFIG] Scanning nested subdirectory: ' . $fullPath);
+                                $scanDirectory($fullPath);
                             }
                         }
-                    } elseif ($item->is_directory) {
-                        if ($path === '/' && in_array($item->name, ['config', 'plugins'])) {
-                            \Log::info('[CONFIG] Scanning subdirectory: ' . $fullPath);
-                            $scanDirectory($fullPath);
-                        } elseif (str_starts_with($path, '/config') || str_starts_with($path, '/plugins')) {
-                            \Log::info('[CONFIG] Scanning nested subdirectory: ' . $fullPath);
-                            $scanDirectory($fullPath);
-                        }
                     }
+                } catch (\Exception $e) {
+                    \Log::error('[CONFIG] Error scanning ' . $path . ': ' . $e->getMessage());
+                    \Log::error('[CONFIG] Stack trace: ' . $e->getTraceAsString());
                 }
-            } catch (\Exception $e) {
-                \Log::error('[CONFIG] Error scanning ' . $path . ': ' . $e->getMessage());
-            }
-        };
-        
-        $scanDirectory('/');
-        
-        \Log::info('[CONFIG] Total config files found: ' . count($configFiles));
-        
-        return new JsonResponse($configFiles);
+            };
+            
+            \Log::info('[CONFIG] About to call scanDirectory for root');
+            $scanDirectory('/');
+            
+            \Log::info('[CONFIG] Total config files found: ' . count($configFiles));
+            
+            return new JsonResponse($configFiles);
+        } catch (\Exception $e) {
+            \Log::error('[CONFIG] Fatal error in listConfigFiles: ' . $e->getMessage());
+            \Log::error('[CONFIG] Stack trace: ' . $e->getTraceAsString());
+            return new JsonResponse([]);
+        }
     }
 }
