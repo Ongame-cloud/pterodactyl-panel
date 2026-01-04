@@ -284,8 +284,10 @@ class FileController extends ClientApiController
                     
                     foreach ($contents as $item) {
                         $fullPath = $path === '/' ? $item['name'] : rtrim($path, '/') . '/' . $item['name'];
+                        $isFile = isset($item['file']) && $item['file'];
+                        $isSymlink = isset($item['symlink']) && $item['symlink'];
                         
-                        if ($item['is_file']) {
+                        if ($isFile && !$isSymlink) {
                             foreach ($configExtensions as $ext) {
                                 if (str_ends_with(strtolower($item['name']), $ext)) {
                                     \Log::info('[CONFIG] Found config file: ' . $fullPath);
@@ -293,7 +295,7 @@ class FileController extends ClientApiController
                                     break;
                                 }
                             }
-                        } elseif ($item['is_directory']) {
+                        } elseif (!$isFile && !$isSymlink) {
                             if ($path === '/' && in_array($item['name'], ['config', 'plugins'])) {
                                 \Log::info('[CONFIG] Scanning subdirectory: ' . $fullPath);
                                 $scanDirectory($fullPath);
