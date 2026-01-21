@@ -1,2 +1,2 @@
-export * from './models.d';
+export * from './models';
 export { default as Transformers, MetaTransformers } from './transformers';

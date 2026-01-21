@@ -1,7 +1,7 @@
 import React, { useContext, useEffect } from 'react';
 import { CheckIcon, ExclamationIcon, InformationCircleIcon, ShieldExclamationIcon } from '@heroicons/react/outline';
 import classNames from 'classnames';
-import { DialogContext, DialogIconProps, styles } from './';
+import { DialogContext, DialogIconProps, styles } from '.';
 
 const icons = {
     danger: ShieldExclamationIcon,

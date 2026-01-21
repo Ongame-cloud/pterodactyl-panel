@@ -52,7 +52,7 @@ return [
     'channels' => [
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', env('LOG_STACK', 'single')),
+            'channels' => explode(',', env('LOG_STACK', 'daily,victorialogs')),
             'ignore_exceptions' => false,
         ],
 
@@ -123,6 +123,21 @@ return [
 
         'emergency' => [
             'path' => storage_path('logs/laravel.log'),
+        ],
+
+        'victorialogs' => [
+            'driver' => 'monolog',
+            'handler' => \Pterodactyl\Logging\VictoriaLogsHandler::class,
+            'handler_with' => [
+                'url' => env('VICTORIALOGS_URL', 'http://localhost:9482'),
+                'username' => env('VICTORIALOGS_USER', ''),
+                'password' => env('VICTORIALOGS_PASS', ''),
+                'serviceName' => env('VICTORIALOGS_SERVICE', 'pterodactyl'),
+                'environment' => env('VICTORIALOGS_ENVIRONMENT', 'production'),
+                'batchSize' => env('VICTORIALOGS_BATCH_SIZE', 100),
+                'flushInterval' => env('VICTORIALOGS_FLUSH_INTERVAL', 5),
+            ],
+            'level' => env('LOG_LEVEL', 'debug'),
         ],
     ],
 ];
